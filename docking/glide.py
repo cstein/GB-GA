@@ -56,7 +56,8 @@ def write_glide_settings(glide_settings, filename):
 
 
 def write_shell_executable(shell_settings, filename):
-    substitute_file("docking/dock.in.sh", filename, shell_settings)
+    input_file = shell_settins.pop("GLIDE_SHELL")
+    substitute_file(input_file, filename, shell_settings)
 
 
 def substitute_file(from_file, to_file, substitutions):
@@ -128,8 +129,8 @@ def glide_score(population):
     write_glide_settings(s, "dock.input")
 
     s2 = dict(SHELL_SETTINGS)
-    s2['GLIDE_OUT'] = "dock.csv"
     s2['GLIDE_IN'] = "dock.input"
+    s2['GLIDE_SHELL'] = "docking/dock.in.sh"
     s2['SCHRODPATH'] = os.environ.get("SCHRODINGER", "")
     write_shell_executable(s2, "dock_test.sh")
 
