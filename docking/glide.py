@@ -2,8 +2,10 @@
 Docking through Glide from Schrodinger
 """
 import csv
+import shutil
 import os
 import random
+import stat
 import string
 import subprocess
 
@@ -30,6 +32,7 @@ SHELL_SETTINGS = {
 def shell(cmd, shell=False):
     p = subprocess.run(cmd, capture_output = True, shell = True)
     if p.returncode > 0:
+        print(p)
         raise ValueError("Error with Docking")
 
 
@@ -56,7 +59,7 @@ def write_glide_settings(glide_settings, filename):
 
 
 def write_shell_executable(shell_settings, filename):
-    input_file = shell_settins.pop("GLIDE_SHELL")
+    input_file = shell_settings.pop("GLIDE_SHELL_IN")
     substitute_file(input_file, filename, shell_settings)
 
 
@@ -76,14 +79,26 @@ def substitute_file(from_file, to_file, substitutions):
             f_out.write(outcome)
 
 
-def molecules_to_structure(population):
+def get_structure(mol, num_conformations):
+    mol = Chem.AddHs(mol)
+    new_mol = Chem.Mol(mol)
+
+    AllChem.EmbedMultipleConfs(mol, numConfs=num_conformations, useExpTorsionAnglePrefs=True, useBasicKnowledge=True)
+    conformer_energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, nonBondedThresh=100.0)
+
+    energies = [e[1] for e in conformer_energies]
+    min_energy_index = energies.index(min(energies))
+
+    new_mol.AddConformer(mol.GetConformer(min_energy_index))
+
+    return new_mol
+
+
+def molecules_to_structure(population, num_conformations):
     molecules = []
     names = []
     for pop_mol in population:
-        mol = Chem.AddHs(pop_mol)
-        AllChem.EmbedMolecule(mol)
-        AllChem.MMFFOptimizeMolecule(mol)
-        molecules.append(mol)
+        molecules.append(get_structure(pop_mol, num_conformations))
         names.append(''.join(random.choices(string.ascii_uppercase + string.digits, k=6)))
 
     return molecules, names
@@ -115,26 +130,40 @@ def parse_output():
     return numpy.array(scores), numpy.array(status)
 
 
-def glide_score(population):
-    mols, names = molecules_to_structure(population)
+def glide_score(population, num_conformations):
+    mols, names = molecules_to_structure(population, num_conformations)
     indices = [i for i, m in enumerate(mols)]
     filenames = ["{}.sd".format(names[i]) for i in indices]
-    for mol, filename in zip(mols, filenames):
-        smile_to_sdf(mol, filename)
+
+    wrk_dir = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    os.mkdir(wrk_dir)
 
     # write the necessary glide-specific files needed for docking
     s = dict(GLIDE_SETTINGS)
     s['LIGANDFILES'] = filenames[:]
-    s['GRIDFILE'] = "docking/glide_grid_2rh1.zip"
-    write_glide_settings(s, "dock.input")
+    s['GRIDFILE'] = "../docking/glide_grid_2rh1.zip"
+    write_glide_settings(s, os.path.join(wrk_dir,"dock.input"))
 
     s2 = dict(SHELL_SETTINGS)
     s2['GLIDE_IN'] = "dock.input"
-    s2['GLIDE_SHELL'] = "docking/dock.in.sh"
+    s2['GLIDE_SHELL_IN'] = "docking/glide_dock.in.sh"
+    s2['GLIDE_SHELL_OUT'] = "dock_test.sh"
     s2['SCHRODPATH'] = os.environ.get("SCHRODINGER", "")
-    write_shell_executable(s2, "dock_test.sh")
+    shell_exec = s2.pop('GLIDE_SHELL_OUT')
+    write_shell_executable(s2, os.path.join(wrk_dir,shell_exec))
 
-    shell("./dock_test.sh")
+    # change to workdirectory
+    os.chdir(wrk_dir)
+    for mol, filename in zip(mols, filenames):
+        smile_to_sdf(mol, filename)
 
+    # execute docking
+    os.chmod(shell_exec, stat.S_IRWXU)
+    shell("./{}".format(shell_exec))
+
+    # parse output
     sim_scores, sim_status = parse_output()
+
+    os.chdir("..")
+    shutil.rmtree(wrk_dir)
     return list(-sim_scores)
