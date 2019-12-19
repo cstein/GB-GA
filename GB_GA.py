@@ -25,7 +25,9 @@ import scoring_functions as sc
 def read_file(file_name):
   mol_list = []
   with open(file_name,'r') as file:
-    for smiles in file:
+    for line in file:
+      tokens = line.split()
+      smiles = tokens[0]
       mol_list.append(Chem.MolFromSmiles(smiles))
 
   return mol_list
@@ -105,3 +107,4 @@ def GA(args):
 
 if __name__ == "__main__":
     pass
+
