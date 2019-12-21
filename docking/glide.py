@@ -20,7 +20,8 @@ GLIDE_SETTINGS = {
   'LIGANDFILES': [],
   'WRITE_CSV': True,
   'POSTDOCK': True,
-  'PRECISION': "HTVS"
+  'DOCKING_METHOD': "rigid",    # confgen
+  'PRECISION': "HTVS"          # sp
 }
 
 SHELL_SETTINGS = {
@@ -30,10 +31,15 @@ SHELL_SETTINGS = {
 
 
 def shell(cmd, shell=False):
-    p = subprocess.run(cmd, capture_output = True, shell = True)
-    if p.returncode > 0:
-        print(p)
-        raise ValueError("Error with Docking")
+    try:
+        p = subprocess.run(cmd, capture_output = True, shell = True)
+    except AttributeError:
+        p = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, err = p.communicate()
+    else:
+        if p.returncode > 0:
+            print(p)
+            raise ValueError("Error with Docking")
 
 
 def write_glide_settings(glide_settings, filename):
@@ -83,15 +89,28 @@ def get_structure(mol, num_conformations):
     mol = Chem.AddHs(mol)
     new_mol = Chem.Mol(mol)
 
-    AllChem.EmbedMultipleConfs(mol, numConfs=num_conformations, useExpTorsionAnglePrefs=True, useBasicKnowledge=True)
-    conformer_energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, nonBondedThresh=100.0)
-
-    energies = [e[1] for e in conformer_energies]
-    min_energy_index = energies.index(min(energies))
-
-    new_mol.AddConformer(mol.GetConformer(min_energy_index))
+    if num_conformations > 0:
+        AllChem.EmbedMultipleConfs(mol, numConfs=num_conformations, useExpTorsionAnglePrefs=True, useBasicKnowledge=True)
+        conformer_energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, nonBondedThresh=100.0)
+        energies = [e[1] for e in conformer_energies]
+        min_energy_index = energies.index(min(energies))
+        new_mol.AddConformer(mol.GetConformer(min_energy_index))
+    else:
+        AllChem.EmbedMolecule(new_mol)
+        AllChem.MMFFOptimizeMolecule(new_mol)
 
     return new_mol
+
+
+def choices(sin, nin=6):
+    result = []
+    try:
+        result = random.choices(sin, k=nin)
+    except AttributeError:
+        for i in range(nin):
+            result.append( random.choice(sin) )
+    finally:
+        return result
 
 
 def molecules_to_structure(population, num_conformations):
@@ -99,7 +118,7 @@ def molecules_to_structure(population, num_conformations):
     names = []
     for pop_mol in population:
         molecules.append(get_structure(pop_mol, num_conformations))
-        names.append(''.join(random.choices(string.ascii_uppercase + string.digits, k=6)))
+        names.append(''.join(choices(string.ascii_uppercase + string.digits, 6)))
 
     return molecules, names
 
@@ -130,22 +149,25 @@ def parse_output():
     return numpy.array(scores), numpy.array(status)
 
 
-def glide_score(population, num_conformations):
+def glide_score(population, method, precision, gridfile, basename, num_conformations, num_cpus):
     mols, names = molecules_to_structure(population, num_conformations)
     indices = [i for i, m in enumerate(mols)]
     filenames = ["{}.sd".format(names[i]) for i in indices]
 
-    wrk_dir = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    wrk_dir = basename + ''.join(choices(string.ascii_uppercase + string.digits, 6))
     os.mkdir(wrk_dir)
 
     # write the necessary glide-specific files needed for docking
     s = dict(GLIDE_SETTINGS)
     s['LIGANDFILES'] = filenames[:]
-    s['GRIDFILE'] = "../docking/glide_grid_2rh1.zip"
+    s['GRIDFILE'] = gridfile
+    s['DOCKING_METHOD'] = method
+    s['PRECISION'] = precision
     write_glide_settings(s, os.path.join(wrk_dir,"dock.input"))
 
     s2 = dict(SHELL_SETTINGS)
     s2['GLIDE_IN'] = "dock.input"
+    s2['NCPUS'] = "{}".format(num_cpus)
     s2['GLIDE_SHELL_IN'] = "docking/glide_dock.in.sh"
     s2['GLIDE_SHELL_OUT'] = "dock_test.sh"
     s2['SCHRODPATH'] = os.environ.get("SCHRODINGER", "")
