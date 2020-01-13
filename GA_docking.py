@@ -37,7 +37,9 @@ co.size_stdev = 5
 scoring_function = sc.rediscovery
 scoring_args = []
 prune_population = True
-basename = os.environ.get("SLURM_JOB_NAME", "")
+basename = os.environ.get("SLURM_JOB_NAME", "") + "_" + os.environ.get("SLURM_JOB_ID", "") + "_" + os.environ.get("SLURM_ARRAY_TASK_ID", "")
+if basename == "_":
+    basename = ""
 
 ap = argparse.ArgumentParser()
 ap.add_argument("smilesfile", metavar="file", type=str, help="input filename of file with SMILES")
@@ -77,9 +79,6 @@ else:
     random_seeds = numpy.random.randint(100000, size=n_tries)
 
 basename = args.basename
-if len(basename) > 0:
-    if basename[-1] != "_":
-        basename += "_"
 
 # glide settings.
 # glide method can overwride number of confs

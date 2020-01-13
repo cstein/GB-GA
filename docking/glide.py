@@ -3,6 +3,7 @@ Docking through Glide from Schrodinger
 """
 import csv
 import shutil
+import multiprocessing as mp
 import os
 import random
 import stat
@@ -38,8 +39,8 @@ def shell(cmd, shell=False):
         output, err = p.communicate()
     else:
         if p.returncode > 0:
-            print(p)
-            raise ValueError("Error with Docking")
+            print("shell:", p)
+            raise ValueError("Error with Docking.")
 
 
 def write_glide_settings(glide_settings, filename):
@@ -86,20 +87,35 @@ def substitute_file(from_file, to_file, substitutions):
 
 
 def get_structure(mol, num_conformations):
-    mol = Chem.AddHs(mol)
+    try:
+        s_mol = Chem.MolToSmiles(mol)
+    except ValueError:
+        print("get_structure: could not convert molecule to SMILES")
+        return None
+
+    try:
+        mol = Chem.AddHs(mol)
+    except ValueError as e:
+        print("get_structure: could not kekulize the molecule '{}'".format(s_mol))
+        return None
+
     new_mol = Chem.Mol(mol)
 
-    if num_conformations > 0:
-        AllChem.EmbedMultipleConfs(mol, numConfs=num_conformations, useExpTorsionAnglePrefs=True, useBasicKnowledge=True)
-        conformer_energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, nonBondedThresh=100.0)
-        energies = [e[1] for e in conformer_energies]
-        min_energy_index = energies.index(min(energies))
-        new_mol.AddConformer(mol.GetConformer(min_energy_index))
-    else:
-        AllChem.EmbedMolecule(new_mol)
-        AllChem.MMFFOptimizeMolecule(new_mol)
-
-    return new_mol
+    try:
+        if num_conformations > 0:
+            AllChem.EmbedMultipleConfs(mol, numConfs=num_conformations, useExpTorsionAnglePrefs=True, useBasicKnowledge=True)
+            conformer_energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, nonBondedThresh=100.0)
+            energies = [e[1] for e in conformer_energies]
+            min_energy_index = energies.index(min(energies))
+            new_mol.AddConformer(mol.GetConformer(min_energy_index))
+        else:
+            AllChem.EmbedMolecule(new_mol)
+            AllChem.MMFFOptimizeMolecule(new_mol)
+    except ValueError:
+        print("get_structure: '{}' could not converted to 3D".format(s_mol))
+        new_mol = None
+    finally:
+        return new_mol
 
 
 def choices(sin, nin=6):
@@ -113,14 +129,26 @@ def choices(sin, nin=6):
         return result
 
 
-def molecules_to_structure(population, num_conformations):
-    molecules = []
-    names = []
-    for pop_mol in population:
-        molecules.append(get_structure(pop_mol, num_conformations))
-        names.append(''.join(choices(string.ascii_uppercase + string.digits, 6)))
+def par_get_structure(mol):
+    return get_structure(mol, 5)
 
-    return molecules, names
+
+def molecules_to_structure(population, num_conformations, num_cpus):
+    """ Converts RDKit molecules to structures
+
+    """
+
+    pool = mp.Pool(num_cpus)
+    try:
+        generated_molecules = pool.map(par_get_structure, population)
+    except OSError:
+        generated_molecules = [par_get_structure(p) for p in population]
+   
+    molecules = [mol for mol in generated_molecules if mol is not None]
+    names = [''.join(choices(string.ascii_uppercase + string.digits, 6)) for pop in molecules]
+    updated_population = [p for (p, m) in zip(population, generated_molecules) if m is not None]
+
+    return molecules, names, updated_population
 
 
 def smile_to_sdf(mol, name):
@@ -150,11 +178,11 @@ def parse_output():
 
 
 def glide_score(population, method, precision, gridfile, basename, num_conformations, num_cpus):
-    mols, names = molecules_to_structure(population, num_conformations)
+    mols, names, population = molecules_to_structure(population, num_conformations, num_cpus)
     indices = [i for i, m in enumerate(mols)]
     filenames = ["{}.sd".format(names[i]) for i in indices]
 
-    wrk_dir = basename + ''.join(choices(string.ascii_uppercase + string.digits, 6))
+    wrk_dir = basename + "_" + ''.join(choices(string.ascii_uppercase + string.digits, 6))
     os.mkdir(wrk_dir)
 
     # write the necessary glide-specific files needed for docking
@@ -184,8 +212,17 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     shell("./{}".format(shell_exec))
 
     # parse output
-    sim_scores, sim_status = parse_output()
+    try:
+        sim_scores, sim_status = parse_output()
+    except IOError as e:
+        print("Error parsing output in {} with error: {}".format(wrk_dir, e.strerror))
+        sim_scores = numpy.array([0.0 for i in population])
+        sim_status = None
 
     os.chdir("..")
-    shutil.rmtree(wrk_dir)
+    if len(population) != len(sim_scores):
+        raise ValueError("Could not score all ligands. Check logs in '{}'".format(wrk_dir))
+
+    if sim_status is not None:
+        shutil.rmtree(wrk_dir)
     return list(-sim_scores)
