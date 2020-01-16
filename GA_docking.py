@@ -37,8 +37,8 @@ co.size_stdev = 5
 scoring_function = sc.rediscovery
 scoring_args = []
 prune_population = True
-basename = os.environ.get("SLURM_JOB_NAME", "") + "_" + os.environ.get("SLURM_JOB_ID", "") + "_" + os.environ.get("SLURM_ARRAY_TASK_ID", "")
-if basename == "_":
+basename = os.environ.get("SLURM_JOB_NAME", "") + "_" + os.environ.get("SLURM_ARRAY_JOB_ID", "") + "_" + os.environ.get("SLURM_ARRAY_TASK_ID", "")
+if basename == "_" or basename == "_":
     basename = ""
 
 ap = argparse.ArgumentParser()
@@ -123,7 +123,7 @@ def GA(args):
     random.seed(seed)
 
     population = ga.make_initial_population(population_size,file_name)
-    scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
+    population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
     fitness = ga.calculate_normalized_fitness(scores)
 
     high_scores = []
@@ -131,7 +131,7 @@ def GA(args):
         t1_gen = time.time()
         mating_pool = ga.make_mating_pool(population, fitness, mating_pool_size)
         new_population = ga.reproduce(mating_pool, population_size, mutation_rate)
-        new_scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
+        new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)
         fitness = ga.calculate_normalized_fitness(scores)
         high_scores.append((scores[0], Chem.MolToSmiles(population[0])))
@@ -146,19 +146,22 @@ def GA(args):
 results = []
 size = []
 t0 = time.time()
+all_smiles = []
 all_scores = []
-
 high_scores_list = []
+
 for i, random_seed in zip(range(n_tries), random_seeds):
     (final_scores, final_population, final_hs, final_generation) = GA([population_size, smiles_filename, scoring_function, generations, mating_pool_size, mutation_rate, scoring_args, max_score, prune_population, random_seed])
     all_scores.append(final_scores)
+    all_smiles.append([Chem.MolToSmiles(x) for x in final_population])
     smiles = Chem.MolToSmiles(final_population[0], isomericSmiles=True)
     results.append(final_scores[0])
     high_scores_list.append(final_hs)
+
     print("{0:d},{1:.2f},{2:s},{3:d},{4:},{5:d}".format(i, final_scores[0], smiles, final_generation, prune_population,random_seed))
 
-    # dump after each generation, overwrite old file if things crash.
-    pickle.dump(high_scores_list, open('GA_dock_' + basename+'.npy', 'wb' ))
+    pickle.dump(high_scores_list, open('GA_dock_' + basename+'_hs.npy', 'wb' ))
+    pickle.dump({'scores': all_scores, 'smiles': all_smiles}, open('GA_dock_' + basename + '_all.npy', 'wb'))
 
 t1 = time.time()
 print("")

@@ -225,4 +225,4 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
 
     if sim_status is not None:
         shutil.rmtree(wrk_dir)
-    return list(-sim_scores)
+    return population, list(-sim_scores)
