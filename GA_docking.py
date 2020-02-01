@@ -1,6 +1,5 @@
 from __future__ import print_function
 import argparse
-import numpy
 import os
 import os.path
 import pickle
@@ -8,6 +7,8 @@ import random
 import sys
 import time
 
+import numpy
+import pandas as pd
 from rdkit import rdBase
 from rdkit import Chem
 
@@ -32,14 +33,12 @@ mutation_rate = 0.5
 n_cpus = 1
 n_confs = 1
 max_score = 20.0
-co.average_size = 30
-co.size_stdev = 5
+average_size = 30
+size_stdev = 5
 scoring_function = sc.rediscovery
 scoring_args = []
 prune_population = True
-basename = os.environ.get("SLURM_JOB_NAME", "") + "-" + os.environ.get("SLURM_ARRAY_JOB_ID", "") + "_" + os.environ.get("SLURM_ARRAY_TASK_ID", "")
-if basename == "_" or basename == "_":
-    basename = ""
+basename = ""
 
 ap = argparse.ArgumentParser()
 ap.add_argument("smilesfile", metavar="file", type=str, help="input filename of file with SMILES")
@@ -55,6 +54,12 @@ ga_settings.add_argument("--maxscore", metavar="float", type=float, default=max_
 ga_settings.add_argument("--randint", metavar="number", type=int, default=-1, help="Specify a positive integer as random seed. Any other values will sample a number from random distribution. Default: %(default)s")
 ga_settings.add_argument("--no-prune", default=prune_population, action="store_false", help="No pruning of mating pools and generations.")
 
+molecule_settings = ap.add_argument_group("Molecule Settings")
+molecule_settings.add_argument("--mol-size", dest="molecule_size", metavar="number", type=int, default=average_size, help="Expected average size of molecule. Prevents unlimited growth. Default: %(default)s.")
+molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="number", type=int, default=size_stdev, help="Standard deviation of size of molecule. Default: %(default)s.")
+molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
+molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_database", metavar="file", type=str, action=ExpandPath, default="./alert_collection.csv", help="File with filters. Default: %(default)s")
+
 glide_settings = ap.add_argument_group("Glide Settings")
 glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default="", action=ExpandPath, help="Path to docking grid.")
 glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="HTVS", choices=("HTVS", "SP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
@@ -63,6 +68,16 @@ glide_settings.add_argument("--glide-method", metavar="method", type=str, defaul
 args = ap.parse_args()
 
 print(args)
+
+co.average_size = args.molecule_size
+co.size_stdev = args.molecule_stdev
+filter = None
+if args.molecule_filters is not None:
+    filter_database = args.molecule_filters_database
+    if not os.path.exists(filter_database):
+        raise ValueError("The filter database file '{}' could not be found.".format(filter_database))
+    smarts_filters = pd.read_csv(filter_database)
+    filter = smarts_filters.loc[smarts_filters['rule_set_name'].isin(args.molecule_filters)]
 
 # now set variables according to input
 smiles_filename = args.smilesfile
@@ -101,12 +116,15 @@ print('* generations', generations)
 print('* mutation_rate', mutation_rate)
 print('* max_score', max_score)
 print('* n_confs', n_confs)
-print('* average_size/size_stdev', co.average_size, co.size_stdev)
 print('* initial pool', smiles_filename)
 print('* number of tries', n_tries)
 print('* number of CPUs', n_cpus)
 print('* seed(s)', random_seeds)
 print('* basename', basename)
+print('*** MOLECULE SETTINGS ***')
+print('* average_size/size_stdev', co.average_size, co.size_stdev)
+print('* molecule filters', args.molecule_filters)
+print('* molecule filters database', args.molecule_filters_database)
 print('*** GLIDE SETTINGS ***')
 print('* grid', glide_grid)
 print('* precision', glide_precision)
@@ -115,14 +133,13 @@ print('* ')
 print('run,score,smiles,generations,prune,seed')
 
 
-def GA(args):
-    population_size, file_name,scoring_function,generations,mating_pool_size,mutation_rate, \
-    scoring_args, max_score, prune_population, seed = args
+def GA(population_size, file_name, scoring_function, generations, mating_pool_size,
+    mutation_rate, scoring_args, max_score, prune_population, seed):
 
     numpy.random.seed(seed)
     random.seed(seed)
 
-    population = ga.make_initial_population(population_size,file_name)
+    population = ga.make_initial_population(population_size, file_name)
     population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
     fitness = ga.calculate_normalized_fitness(scores)
 
@@ -130,7 +147,7 @@ def GA(args):
     for generation in range(generations):
         t1_gen = time.time()
         mating_pool = ga.make_mating_pool(population, fitness, mating_pool_size)
-        new_population = ga.reproduce(mating_pool, population_size, mutation_rate)
+        new_population = ga.reproduce(mating_pool, population_size, mutation_rate, filter)
         new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)
         fitness = ga.calculate_normalized_fitness(scores)
@@ -151,7 +168,7 @@ all_scores = []
 high_scores_list = []
 
 for i, random_seed in zip(range(n_tries), random_seeds):
-    (final_scores, final_population, final_hs, final_generation) = GA([population_size, smiles_filename, scoring_function, generations, mating_pool_size, mutation_rate, scoring_args, max_score, prune_population, random_seed])
+    (final_scores, final_population, final_hs, final_generation) = GA(population_size, smiles_filename, scoring_function, generations, mating_pool_size, mutation_rate, scoring_args, max_score, prune_population, random_seed)
     all_scores.append(final_scores)
     all_smiles.append([Chem.MolToSmiles(x) for x in final_population])
     smiles = Chem.MolToSmiles(final_population[0], isomericSmiles=True)

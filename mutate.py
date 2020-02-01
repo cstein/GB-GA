@@ -92,7 +92,7 @@ def change_atom(mol):
   
   return '[X:1]>>[Y:1]'.replace('X',X).replace('Y',Y)
 
-def mutate(mol,mutation_rate):
+def mutate(mol,mutation_rate, filter):
 
   if random.random() > mutation_rate:
     return mol
@@ -120,7 +120,7 @@ def mutate(mol,mutation_rate):
     for m in new_mol_trial:
       m = m[0]
       #print Chem.MolToSmiles(mol),mol_OK(mol)
-      if co.mol_OK(m, None) and co.ring_OK(m):
+      if co.mol_OK(m, filter) and co.ring_OK(m):
         new_mols.append(m)
     
     if len(new_mols) > 0:
