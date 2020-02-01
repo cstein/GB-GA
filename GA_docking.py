@@ -37,7 +37,7 @@ co.size_stdev = 5
 scoring_function = sc.rediscovery
 scoring_args = []
 prune_population = True
-basename = os.environ.get("SLURM_JOB_NAME", "") + "_" + os.environ.get("SLURM_ARRAY_JOB_ID", "") + "_" + os.environ.get("SLURM_ARRAY_TASK_ID", "")
+basename = os.environ.get("SLURM_JOB_NAME", "") + "-" + os.environ.get("SLURM_ARRAY_JOB_ID", "") + "_" + os.environ.get("SLURM_ARRAY_TASK_ID", "")
 if basename == "_" or basename == "_":
     basename = ""
 
