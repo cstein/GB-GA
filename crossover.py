@@ -68,12 +68,53 @@ def ring_OK(mol):
   
   return not ring_allene and not macro_cycle and not double_bond_in_small_ring
 
-def mol_OK(mol):
+
+def mol_issane(mol, filter):
+  """ Checks that a smiles string mathes some filter
+
+      If a match is found between the molecule and the filter
+      the molecule is NOT suitable for further use
+
+      :param mol string: SMILES string of molecule
+      :param filter pandas.DataFrame: a frame with a filter
+  """
+  # always return True (molecule OK) if a filter is not supplied
+  if filter is None:
+      return True
+
+  for index, row in filter.iterrows():
+      smarts = row['smarts']
+      pattern = Chem.MolFromSmarts(smarts)
+      if mol.HasSubstructMatch(pattern):
+        #print(smarts,row['rule_set_name']) #debug
+        return False
+
+  return True
+
+
+def mol_OK(mol, filter):
+  """ Returns of molecule on input is OK according to various criteria
+
+      Criteria currently tested are:
+        * check if RDKit can understand the smiles string
+        * check if the size is OK
+        * check if the molecule is sane
+
+      :param mol string: SMILES string
+      :param filter string: the name of the filter to use
+  """
   try:
+    # check RDKit understands a molecule
     Chem.SanitizeMol(mol)
     test_mol = Chem.MolFromSmiles(Chem.MolToSmiles(mol))
-    if test_mol == None:
-      return None
+    if test_mol is None:
+      return False
+
+    # check molecule is sane
+    if not mol_issane(mol,filter):
+      return False
+
+    # check molecule size
     target_size = size_stdev*np.random.randn() + average_size #parameters set in GA_mol
     if mol.GetNumAtoms() > 5 and mol.GetNumAtoms() < target_size:
       return True
@@ -110,13 +151,13 @@ def crossover_ring(parent_A,parent_B):
       rxn2 = AllChem.ReactionFromSmarts(rs)
       for m in new_mol_trial:
         m = m[0]
-        if mol_OK(m):
+        if mol_OK(m, None):
           new_mols += list(rxn2.RunReactants((m,)))
     
     new_mols2 = []
     for m in new_mols:
       m = m[0]
-      if mol_OK(m) and ring_OK(m):
+      if mol_OK(m, None) and ring_OK(m):
         new_mols2.append(m)
     
     if len(new_mols2) > 0:
@@ -139,7 +180,7 @@ def crossover_non_ring(parent_A,parent_B):
     new_mols = []
     for mol in new_mol_trial:
       mol = mol[0]
-      if mol_OK(mol):
+      if mol_OK(mol, None):
         new_mols.append(mol)
     
     if len(new_mols) > 0:

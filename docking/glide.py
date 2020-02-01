@@ -95,7 +95,7 @@ def get_structure(mol, num_conformations):
 
     try:
         mol = Chem.AddHs(mol)
-    except ValueError as e:
+    except ValueError:
         print("get_structure: could not kekulize the molecule '{}'".format(s_mol))
         return None
 

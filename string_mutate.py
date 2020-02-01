@@ -53,7 +53,7 @@ def mutate(mol,mutation_rate):
         new_child[mutated_gene] = symbols[random_symbol_number]
         new_child_mol = stco.string2mol(new_child)
         #print(child_smiles,Chem.MolToSmiles(child_mol),child_mol,co.mol_OK(child_mol))
-        if co.mol_OK(new_child_mol):
+        if co.mol_OK(new_child_mol, None):
             return new_child_mol
 
     return mol

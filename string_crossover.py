@@ -69,7 +69,7 @@ def crossover(parent_a_mol,parent_b_mol):
         child_string = a1 + b2
         child_mol = string2mol(child_string)
         #print(child_string,Chem.MolToSmiles(child_mol),child_mol,co.mol_OK(child_mol))
-        if co.mol_OK(child_mol):
+        if co.mol_OK(child_mol, None):
             return child_mol
 
     return None

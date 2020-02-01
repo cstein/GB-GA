@@ -120,7 +120,7 @@ def mutate(mol,mutation_rate):
     for m in new_mol_trial:
       m = m[0]
       #print Chem.MolToSmiles(mol),mol_OK(mol)
-      if co.mol_OK(m) and co.ring_OK(m):
+      if co.mol_OK(m, None) and co.ring_OK(m):
         new_mols.append(m)
     
     if len(new_mols) > 0:
