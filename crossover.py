@@ -82,9 +82,7 @@ def mol_issane(mol, filter):
   if filter is None:
       return True
 
-  for index, row in filter.iterrows():
-      smarts = row['smarts']
-      pattern = Chem.MolFromSmarts(smarts)
+  for pattern in filter:
       if mol.HasSubstructMatch(pattern):
         # print(smarts, row['rule_set_name']) #debug
         return False

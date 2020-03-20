@@ -219,6 +219,10 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
         sim_scores = numpy.array([0.0 for i in population])
         sim_status = None
 
+    # copy the poses to parent directory to save it for later
+    shutil.copy("dock_subjob_poses.zip", "../{}.zip".format(basename))
+
+    # clean up stuff
     os.chdir("..")
     if len(population) != len(sim_scores):
         raise ValueError("Could not score all ligands. Check logs in '{}'".format(wrk_dir))

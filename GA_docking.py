@@ -16,6 +16,22 @@ import crossover as co
 import scoring_functions as sc
 import GB_GA as ga
 import docking
+import sascorer
+
+
+def sa_score_modifier(sa_scores, mu = 2.230044, sigma = 0.6526308):
+    """ Computes a synthesizability multiplier for a (range of) synthetic accessibility score(s)
+
+        The multiplier is between 1 (perfectly synthesizable) and 0 (not synthesizable).
+        Based on the work of https://arxiv.org/pdf/2002.07007
+
+        :param list sa_scores: list of synthetic availability scores
+        :param float mu: average synthetic availability score
+        :param float sigma: standard deviation of the score to accept
+    """
+    mod_scores = numpy.maximum(sa_scores, mu)
+    return numpy.exp(-0.5 * numpy.power((mod_scores - mu) / sigma, 2.))
+
 
 class ExpandPath(argparse.Action):
     """ Custom ArgumentParser action to expand absolute paths """
@@ -39,6 +55,7 @@ scoring_function = sc.rediscovery
 scoring_args = []
 prune_population = True
 basename = ""
+sa_screening = False
 
 ap = argparse.ArgumentParser()
 ap.add_argument("smilesfile", metavar="file", type=str, help="input filename of file with SMILES")
@@ -59,6 +76,7 @@ molecule_settings.add_argument("--mol-size", dest="molecule_size", metavar="numb
 molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="number", type=int, default=size_stdev, help="Standard deviation of size of molecule. Default: %(default)s.")
 molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
 molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_database", metavar="file", type=str, action=ExpandPath, default="./alert_collection.csv", help="File with filters. Default: %(default)s")
+molecule_settings.add_argument("--mol-sa-screening", dest="sa_screening", default=sa_screening, action="store_true", help="Add this option to enable synthetic accesibility screening")
 
 glide_settings = ap.add_argument_group("Glide Settings")
 glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default="", action=ExpandPath, help="Path to docking grid.")
@@ -77,7 +95,8 @@ if args.molecule_filters is not None:
     if not os.path.exists(filter_database):
         raise ValueError("The filter database file '{}' could not be found.".format(filter_database))
     smarts_filters = pd.read_csv(filter_database)
-    filter = smarts_filters.loc[smarts_filters['rule_set_name'].isin(args.molecule_filters)]
+    filters = smarts_filters.loc[smarts_filters['rule_set_name'].isin(args.molecule_filters)]
+    filter = [Chem.MolFromSmarts(row['smarts']) for index, row in filters.iterrows()]
 
 # now set variables according to input
 smiles_filename = args.smilesfile
@@ -94,6 +113,7 @@ else:
     random_seeds = numpy.random.randint(100000, size=n_tries)
 
 basename = args.basename
+sa_screening = args.sa_screening
 
 # glide settings.
 # glide method can overwride number of confs
@@ -125,6 +145,7 @@ print('*** MOLECULE SETTINGS ***')
 print('* average_size/size_stdev', co.average_size, co.size_stdev)
 print('* molecule filters', args.molecule_filters)
 print('* molecule filters database', args.molecule_filters_database)
+print('* synthetic availability screen', sa_screening)
 print('*** GLIDE SETTINGS ***')
 print('* grid', glide_grid)
 print('* precision', glide_precision)
@@ -140,7 +161,13 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
     random.seed(seed)
 
     population = ga.make_initial_population(population_size, file_name)
+
     population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
+
+    if sa_screening:
+        sa_scores = sa_score_modifier([sascorer.calculateScore(p) for p in population])
+        scores *= sa_scores
+
     fitness = ga.calculate_normalized_fitness(scores)
 
     high_scores = []
@@ -149,6 +176,11 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
         mating_pool = ga.make_mating_pool(population, fitness, mating_pool_size)
         new_population = ga.reproduce(mating_pool, population_size, mutation_rate, filter)
         new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
+
+        if sa_screening:
+            sa_scores = sa_score_modifier([sascorer.calculateScore(p) for p in population])
+            new_scores *= sa_scores
+
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)
         fitness = ga.calculate_normalized_fitness(scores)
         high_scores.append((scores[0], Chem.MolToSmiles(population[0])))
