@@ -20,7 +20,7 @@ import shutil
 import string
 import random
 
-import sascorer
+from sa import calculateScore
 
 logP_values = np.loadtxt('logP_values.txt')
 SA_scores = np.loadtxt('SA_scores.txt')
@@ -76,7 +76,7 @@ def logP_score(m):
     print (m, Chem.MolToSmiles(m))
     sys.exit('failed to make a molecule')
 
-  SA_score = -sascorer.calculateScore(m)
+  SA_score = -calculateScore(m)
   #cycle_list = nx.cycle_basis(nx.Graph(rdmolops.GetAdjacencyMatrix(m)))
   cycle_list = m.GetRingInfo().AtomRings() #remove networkx dependence
   if len(cycle_list) == 0:
