@@ -41,6 +41,7 @@ class ExpandPath(argparse.Action):
         else:
             setattr(namespace, self.dest, os.path.abspath(values))
 
+# Default settings for the program
 n_tries = 1
 generations = 1
 population_size = 10
@@ -49,7 +50,7 @@ mutation_rate = 0.5
 n_cpus = 1
 n_confs = 1
 max_score = 20.0
-average_size = 30
+average_size = 50
 size_stdev = 5
 scoring_function = sc.rediscovery
 scoring_args = []
@@ -116,7 +117,7 @@ basename = args.basename
 sa_screening = args.sa_screening
 
 # glide settings.
-# glide method can overwride number of confs
+# glide method can overwrite number of conformations
 glide_method = args.glide_method
 glide_precision = args.glide_precision
 glide_grid = args.glide_grid
@@ -166,7 +167,7 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
 
     if sa_screening:
         sa_scores = sa_score_modifier([sascorer.calculateScore(p) for p in population])
-        scores = [ns * sa for ns, sa in zip(scores, sa_scores)] # rescale (force list type)
+        scores = [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores  and force list type
 
     fitness = ga.calculate_normalized_fitness(scores)
 
@@ -179,7 +180,7 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
 
         if sa_screening:
             sa_scores = sa_score_modifier([sascorer.calculateScore(p) for p in new_population])
-            new_scores = [ns * sa for ns, sa in zip(new_scores, sa_scores)] # rescale (force list type)
+            new_scores = [ns * sa for ns, sa in zip(new_scores, sa_scores)]  # rescale scores  and force list type
             assert len(new_scores) == len(new_population)
 
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)

@@ -87,6 +87,12 @@ def substitute_file(from_file, to_file, substitutions):
 
 
 def get_structure(mol, num_conformations):
+    """ Converts an RDKit molecule (2D representation) to a 3D representation
+
+    :param Chem.Mol mol: the RDKit molecule
+    :param int num_conformations:
+    :return: an RDKit molecule with 3D structure information
+    """
     try:
         s_mol = Chem.MolToSmiles(mol)
     except ValueError:
@@ -178,8 +184,19 @@ def parse_output():
 
 
 def glide_score(population, method, precision, gridfile, basename, num_conformations, num_cpus):
-    mols, names, population = molecules_to_structure(population, num_conformations, num_cpus)
-    indices = [i for i, m in enumerate(mols)]
+    """ Scores a population of RDKit molecules with the Glide program from the Schrodinger package
+
+    :param list[RDKit.Chem.Mol] population:
+    :param str method: The docking method to use (confgen, rigid, mininplace or inplace)
+    :param precision: Docking precision (HTVS, SP or XP)
+    :param gridfile: The gridfile to dock into (a .zip file)
+    :param basename: Basename to use for output purposes
+    :param num_conformations: Number of conformations to generate through RDKit if chosen
+    :param num_cpus: number of CPUs to use pr. docking job
+    :return:
+    """
+    molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
+    indices = [i for i, m in enumerate(molecules)]
     filenames = ["{}.sd".format(names[i]) for i in indices]
 
     wrk_dir = basename + "_" + ''.join(choices(string.ascii_uppercase + string.digits, 6))
@@ -191,7 +208,7 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     s['GRIDFILE'] = gridfile
     s['DOCKING_METHOD'] = method
     s['PRECISION'] = precision
-    write_glide_settings(s, os.path.join(wrk_dir,"dock.input"))
+    write_glide_settings(s, os.path.join(wrk_dir, "dock.input"))
 
     s2 = dict(SHELL_SETTINGS)
     s2['GLIDE_IN'] = "dock.input"
@@ -200,11 +217,11 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     s2['GLIDE_SHELL_OUT'] = "dock_test.sh"
     s2['SCHRODPATH'] = os.environ.get("SCHRODINGER", "")
     shell_exec = s2.pop('GLIDE_SHELL_OUT')
-    write_shell_executable(s2, os.path.join(wrk_dir,shell_exec))
+    write_shell_executable(s2, os.path.join(wrk_dir, shell_exec))
 
-    # change to workdirectory
+    # change to work directory
     os.chdir(wrk_dir)
-    for mol, filename in zip(mols, filenames):
+    for mol, filename in zip(molecules, filenames):
         smile_to_sdf(mol, filename)
 
     # execute docking
@@ -219,14 +236,15 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
         sim_scores = numpy.array([0.0 for i in population])
         sim_status = None
 
-    # copy the poses to parent directory to save it for later
+    # copy the current population of poses to parent directory to save it for later
     shutil.copy("dock_subjob_poses.zip", "../{}.zip".format(basename))
 
-    # clean up stuff
+    # go back from work directory
     os.chdir("..")
     if len(population) != len(sim_scores):
         raise ValueError("Could not score all ligands. Check logs in '{}'".format(wrk_dir))
 
+    # remove temporary directory
     if sim_status is not None:
         shutil.rmtree(wrk_dir)
     return population, list(-sim_scores)
