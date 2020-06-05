@@ -17,7 +17,7 @@ import scoring_functions as sc
 import GB_GA as ga
 import docking
 
-from sa import reweigh_scores_by_sa
+from sa import reweigh_scores_by_sa, neutralize_molecules
 
 
 class ExpandPath(argparse.Action):
@@ -154,7 +154,7 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
     population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
 
     if sa_screening:
-        scores = reweigh_scores_by_sa(population, scores)
+        scores = reweigh_scores_by_sa(neutralize_molecules(population), scores)
 
     fitness = ga.calculate_normalized_fitness(scores)
 
@@ -166,7 +166,7 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
         new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
 
         if sa_screening:
-            new_scores = reweigh_scores_by_sa(new_population, new_scores)
+            new_scores = reweigh_scores_by_sa(neutralize_molecules(new_population), new_scores)
             assert len(new_scores) == len(new_population)
 
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)

@@ -2,6 +2,7 @@
 
 import json
 import numpy as np
+import copy
 
 from rdkit import Chem
 
@@ -10,7 +11,7 @@ _neutralize_reactions = None
 
 
 def read_neutralizers(name="neutralize"):
-    filename = f"{name}.json"
+    filename = f"sa/{name}.json"
     with open(filename) as json_file:
         reactions = json.load(json_file)
         neutralize_reactions = []
@@ -29,16 +30,31 @@ def neutralize_smiles(smiles):
     """ Neutralize a set of SMILES
 
         :param list smiles: a list of SMILES
-        note:
     """
     assert type(smiles) == list
+
+    charged_molecules = [Chem.MolFromSmiles(s) for s in smiles]
+    neutral_molecules = neutralize_molecules(charged_molecules)
+    return [Chem.MolToSmiles(m) for m in neutral_molecules]
+
+
+def neutralize_molecules(charged_molecules):
+    """ Neutralize a set of molecules
+
+    :param list charged_molecules: list of (possibly) charged molecules
+    :return: list of neutral molecules
+    """
+    assert type(charged_molecules) == list
     global _neutralize_reactions
     if _neutralize_reactions is None:
         _neutralize_reactions = read_neutralizers()
 
     neutral_molecules = []
-    for s in smiles:
-        mol = Chem.MolFromSmiles(s)
+    for c_mol in charged_molecules:
+        mol = copy.deepcopy(c_mol)
+        #mol = Chem.Mol(c_mol)
+        #mol.UpdatePropertyCache()
+        #Chem.rdmolops.FastFindRings(mol)
         assert mol is not None
         for reactant_mol, product_mol in _neutralize_reactions:
             while mol.HasSubstructMatch(reactant_mol):
@@ -46,7 +62,7 @@ def neutralize_smiles(smiles):
                 if rms[0] is not None:
                     mol = rms[0]
         neutral_molecules.append(mol)
-    return [Chem.MolToSmiles(m) for m in neutral_molecules]
+    return neutral_molecules
 
 
 def sa_score_modifier(sa_scores, mu = 2.230044, sigma = 0.6526308):
