@@ -16,21 +16,8 @@ import crossover as co
 import scoring_functions as sc
 import GB_GA as ga
 import docking
-import sascorer
 
-
-def sa_score_modifier(sa_scores, mu = 2.230044, sigma = 0.6526308):
-    """ Computes a synthesizability multiplier for a (range of) synthetic accessibility score(s)
-
-        The multiplier is between 1 (perfectly synthesizable) and 0 (not synthesizable).
-        Based on the work of https://arxiv.org/pdf/2002.07007
-
-        :param list sa_scores: list of synthetic availability scores
-        :param float mu: average synthetic availability score
-        :param float sigma: standard deviation of the score to accept
-    """
-    mod_scores = numpy.maximum(sa_scores, mu)
-    return numpy.exp(-0.5 * numpy.power((mod_scores - mu) / sigma, 2.))
+from sa import reweigh_scores_by_sa, neutralize_molecules
 
 
 class ExpandPath(argparse.Action):
@@ -40,6 +27,7 @@ class ExpandPath(argparse.Action):
             setattr(namespace, self.dest, None)
         else:
             setattr(namespace, self.dest, os.path.abspath(values))
+
 
 # Default settings for the program
 n_tries = 1
@@ -166,8 +154,7 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
     population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
 
     if sa_screening:
-        sa_scores = sa_score_modifier([sascorer.calculateScore(p) for p in population])
-        scores = [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores  and force list type
+        scores = reweigh_scores_by_sa(neutralize_molecules(population), scores)
 
     fitness = ga.calculate_normalized_fitness(scores)
 
@@ -179,8 +166,7 @@ def GA(population_size, file_name, scoring_function, generations, mating_pool_si
         new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, n_confs, n_cpus)
 
         if sa_screening:
-            sa_scores = sa_score_modifier([sascorer.calculateScore(p) for p in new_population])
-            new_scores = [ns * sa for ns, sa in zip(new_scores, sa_scores)]  # rescale scores  and force list type
+            new_scores = reweigh_scores_by_sa(neutralize_molecules(new_population), new_scores)
             assert len(new_scores) == len(new_population)
 
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)
