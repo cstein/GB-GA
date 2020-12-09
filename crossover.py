@@ -69,14 +69,14 @@ def ring_OK(mol):
   return not ring_allene and not macro_cycle and not double_bond_in_small_ring
 
 
-def mol_issane(mol, filter):
-  """ Checks that a smiles string mathes some filter
+def mol_issane(mol: Chem.Mol, filter) -> bool:
+  """ Checks that a RDKit molecule matches some filter
 
       If a match is found between the molecule and the filter
       the molecule is NOT suitable for further use
 
-      :param mol string: SMILES string of molecule
-      :param filter pandas.DataFrame: a frame with a filter
+      :param mol: SMILES string of molecule
+      :param filter: a frame with a filter
   """
   # always return True (molecule OK) if a filter is not supplied
   if filter is None:
@@ -85,6 +85,7 @@ def mol_issane(mol, filter):
   for pattern in filter:
       if mol.HasSubstructMatch(pattern):
         # print(smarts, row['rule_set_name']) #debug
+        # print("matches:", Chem.MolToSmarts(pattern))
         return False
 
   return True
