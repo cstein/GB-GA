@@ -10,8 +10,7 @@ import stat
 import string
 import subprocess
 
-import numpy
-import numpy.random
+import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
@@ -33,14 +32,14 @@ SHELL_SETTINGS = {
 
 def shell(cmd, shell=False):
     try:
-        p = subprocess.run(cmd, capture_output = True, shell = True)
+        p = subprocess.run(cmd, capture_output=True, shell=True)
     except AttributeError:
         p = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, err = p.communicate()
     else:
         if p.returncode > 0:
-            print("shell:", p)
-            raise ValueError("Error with Docking.")
+            print("GLIDE Error: Error with docking. Shell output was:", p)
+            raise ValueError("GLIDE Error: Error with docking. Check logs.")
 
 
 def write_glide_settings(glide_settings, filename):
@@ -118,7 +117,7 @@ def get_structure(mol, num_conformations):
             AllChem.EmbedMolecule(new_mol)
             AllChem.MMFFOptimizeMolecule(new_mol)
     except ValueError:
-        print("get_structure: '{}' could not converted to 3D".format(s_mol))
+        print("GLIDE Error: get_structure: '{}' could not converted to 3D".format(s_mol))
         new_mol = None
     finally:
         return new_mol
@@ -142,6 +141,10 @@ def par_get_structure(mol):
 def molecules_to_structure(population, num_conformations, num_cpus):
     """ Converts RDKit molecules to structures
 
+        :param list[rdkit.Chem.Mol] population: molecules
+        :param int num_conformations: number of conformations to generate
+        :param int num_cpus: number of cpus to use
+
     """
 
     pool = mp.Pool(num_cpus)
@@ -158,10 +161,21 @@ def molecules_to_structure(population, num_conformations, num_cpus):
 
 
 def smile_to_sdf(mol, name):
+    """ Writes an RDKit molecule to SDF format
+
+    :param rdkit.Chem.Mol mol:
+    :param str name: The filename to write to (including extension)
+    :return: None
+    """
     Chem.SDWriter("{}".format(name)).write(mol)
 
 
 def parse_output():
+    """ Parses the output (dock.csv) from a glide run
+
+    :return: scores and status
+    :rtype: tuple[np.ndarray, np.ndarray]
+    """
     status = []
     scores = []
     with open('dock.csv', 'r') as csvfile:
@@ -180,20 +194,21 @@ def parse_output():
 
                 status.append(status_ok)
 
-    return numpy.array(scores), numpy.array(status)
+    return np.array(scores), np.array(status)
 
 
 def glide_score(population, method, precision, gridfile, basename, num_conformations, num_cpus):
     """ Scores a population of RDKit molecules with the Glide program from the Schrodinger package
 
-    :param list[RDKit.Chem.Mol] population:
+    :param list[rdkit.Chem.Mol] population:
     :param str method: The docking method to use (confgen, rigid, mininplace or inplace)
-    :param precision: Docking precision (HTVS, SP or XP)
-    :param gridfile: The gridfile to dock into (a .zip file)
-    :param basename: Basename to use for output purposes
-    :param num_conformations: Number of conformations to generate through RDKit if chosen
-    :param num_cpus: number of CPUs to use pr. docking job
-    :return:
+    :param str precision: Docking precision (HTVS, SP or XP)
+    :param str gridfile: The gridfile to dock into (a .zip file)
+    :param str basename: Basename to use for output purposes
+    :param int num_conformations: Number of conformations to generate through RDKit if chosen
+    :param int num_cpus: number of CPUs to use pr. docking job
+    :return: lists of molecules and scores
+    :rtype: tuple[list[rdkit.Chem.mol], list[float]]
     """
     molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
     indices = [i for i, m in enumerate(molecules)]
@@ -232,8 +247,8 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     try:
         sim_scores, sim_status = parse_output()
     except IOError as e:
-        print("Error parsing output in {} with error: {}".format(wrk_dir, e.strerror))
-        sim_scores = numpy.array([0.0 for i in population])
+        print("GLIDE Warning: Error parsing output in {} with error: {}".format(wrk_dir, e.strerror))
+        sim_scores = np.array([0.0 for i in population])
         sim_status = None
 
     # copy the current population of poses to parent directory to save it for later
@@ -242,9 +257,16 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     # go back from work directory
     os.chdir("..")
     if len(population) != len(sim_scores):
-        raise ValueError("Could not score all ligands. Check logs in '{}'".format(wrk_dir))
+        raise ValueError("GLIDE Error: Could not score all ligands. Check logs in '{}'".format(wrk_dir))
 
     # remove temporary directory
     if sim_status is not None:
-        shutil.rmtree(wrk_dir)
+        try:
+            shutil.rmtree(wrk_dir)
+        except OSError:
+            # in rare cases, the rmtree function is called before / during the
+            # cleanup actions by GLIDE. This raises an OSError because of the
+            # way that rmtree works (list all files, then delete individually)
+            # Here, we simply let it slide so the USER can deal with it later
+            print("GLIDE Warning: Could not delete working directory `{}`. Please delete when done.".format(wrk_dir))
     return population, list(-sim_scores)
