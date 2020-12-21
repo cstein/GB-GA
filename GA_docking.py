@@ -67,9 +67,13 @@ molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_databas
 molecule_settings.add_argument("--mol-sa-screening", dest="sa_screening", default=sa_screening, action="store_true", help="Add this option to enable synthetic accesibility screening")
 
 glide_settings = ap.add_argument_group("Glide Settings")
-glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default="", action=ExpandPath, help="Path to docking grid.")
+glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to GLIDE docking grid. The presence of this keyword activates GLIDE docking.")
 glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
 glide_settings.add_argument("--glide-method", metavar="method", type=str, default="confgen", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
+
+smina_settings = ap.add_argument_group("SMINA Settings")
+smina_settings.add_argument("--smina-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to SMINA docking grid. The presence of this keyword activates SMINA docking.")
+smina_settings.add_argument("--smina-center", nargs=3, type=float, default=[0.0, 0.0, 0.0], help="Center for docking with SMINA in host.")
 
 args = ap.parse_args()
 
@@ -96,19 +100,35 @@ molecule_filter = filters.get_molecule_filters(args.molecule_filters, args.molec
 basename = args.basename
 sa_screening = args.sa_screening
 
-# glide settings.
-# glide method can overwrite number of conformations
-glide_method = args.glide_method
-glide_precision = args.glide_precision
-glide_grid = args.glide_grid
-if not os.path.exists(glide_grid):
-    raise ValueError("The glide grid file '{}' could not be found.".format(glide_grid))
+# Determine docking method (Glide or SMINA)
+# Is docking activated?
+if args.glide_grid is None and args.smina_grid is None:
+    print("No docking method specified. Use --glide-grid for Glide or --smina-grid for SMINA.")
+    raise ValueError("No docking method specified. Aborting.")
 
-if glide_method == "confgen":
-    print("")
-    print("**NB** Glide method '{}' selected. RDKit confgen disabled.".format(glide_method))
-    print("")
-    num_conformations = -1
+# Are both methods activated?
+if args.glide_grid is not None and args.smina_grid is not None:
+    print("Both docking methods (Glide and SMINA) are activated.")
+    raise ValueError("Both docking methods specified. Aborting.")
+
+if args.glide_grid is not None:
+    # glide settings.
+    # glide method can overwrite number of conformations
+    glide_method = args.glide_method
+    glide_precision = args.glide_precision
+    glide_grid = args.glide_grid
+    if not os.path.exists(glide_grid):
+        raise ValueError("The glide grid file '{}' could not be found.".format(glide_grid))
+
+    if glide_method == "confgen":
+        print("")
+        print("**NB** Glide method '{}' selected. RDKit confgen disabled.".format(glide_method))
+        print("")
+        num_conformations = -1
+
+if args.smina_grid is not None:
+    smina_grid = args.smina_grid
+    smina_center = numpy.array(args.smina_center)
 
 print('* RDKit version', rdBase.rdkitVersion)
 print('* population_size', population_size)
@@ -127,10 +147,15 @@ print('* average molecular size and standard deviation', co.average_size, co.siz
 print('* molecule filters', args.molecule_filters)
 print('* molecule filters database', args.molecule_filters_database)
 print('* synthetic availability screen', sa_screening)
-print('*** GLIDE SETTINGS ***')
-print('* grid', glide_grid)
-print('* precision', glide_precision)
-print('* method', glide_method)
+if args.glide_grid is not None:
+    print('*** GLIDE SETTINGS ***')
+    print('* grid', glide_grid)
+    print('* precision', glide_precision)
+    print('* method', glide_method)
+if args.smina_grid is not None:
+    print('*** SMINA SETTINGS ***')
+    print('* grid', smina_grid)
+    print('* center', smina_center)
 print('* ')
 print('run,score,smiles,generations,prune,seed')
 
@@ -145,7 +170,12 @@ if __name__ == '__main__':
 
     population = ga.make_initial_population(population_size, smiles_filename)
 
-    population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
+    if args.glide_grid is not None:
+        population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
+    elif args.smina_grid is not None:
+        population, scores = docking.smina_score(population, basename, smina_grid, smina_center, num_conformations, num_cpus)
+    else:
+        raise ValueError("How did you end up here?")
     if sa_screening:
         scores = reweigh_scores_by_sa(neutralize_molecules(population), scores)
     fitness = ga.calculate_normalized_fitness(scores)
@@ -155,7 +185,12 @@ if __name__ == '__main__':
         mating_pool = ga.make_mating_pool(population, fitness, mating_pool_size)
         new_population = ga.reproduce(mating_pool, population_size, mutation_rate, molecule_filter)
 
-        new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
+        if args.glide_grid is not None:
+            new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
+        elif args.smina_grid is not None:
+            new_population, new_scores = docking.smina_score(new_population, basename, smina_grid, smina_center, num_conformations, num_cpus)
+        else:
+            raise ValueError("How did you end up here?")
         if sa_screening:
             new_scores = reweigh_scores_by_sa(neutralize_molecules(new_population), new_scores)
             assert len(new_scores) == len(new_population)
