@@ -16,6 +16,7 @@ from rdkit import Chem
 import crossover as co
 import GB_GA as ga
 import docking
+import filters
 
 from sa import reweigh_scores_by_sa, neutralize_molecules
 
@@ -27,21 +28,6 @@ class ExpandPath(argparse.Action):
             setattr(namespace, self.dest, None)
         else:
             setattr(namespace, self.dest, os.path.abspath(values))
-
-
-def get_molecule_filter(filters: List[str], filter_database: str) -> Union[None, List[Chem.Mol]]:
-    """ Returns a list of RDKit molecules appropriate to filter valid molecules.
-
-    :param filters: A list of applicable filters (i.e., Glaxo, Dundee and so forth)
-    :param filter_database: Path to the .csv file
-    :return:
-    """
-    if filters is not None:
-        if not os.path.exists(filter_database):
-            raise ValueError("The filter database file '{}' could not be found.".format(filter_database))
-        smarts_filters = pd.read_csv(filter_database)
-        filters = smarts_filters.loc[smarts_filters['rule_set_name'].isin(args.molecule_filters)]
-        return [Chem.MolFromSmarts(row['smarts']) for index, row in filters.iterrows()]
 
 
 # Default settings for the GB-GA program with Docking
@@ -105,7 +91,7 @@ if args.randint > 0:
     random_seeds = [args.randint for i in range(n_tries)]
 else:
     random_seeds = numpy.random.randint(100000, size=n_tries)
-molecule_filter = get_molecule_filter(args.molecule_filters, args.molecule_filters_database)
+molecule_filter = filters.get_molecule_filters(args.molecule_filters, args.molecule_filters_database)
 
 basename = args.basename
 sa_screening = args.sa_screening
