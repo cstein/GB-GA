@@ -89,13 +89,21 @@ def parse_output(basename: str) -> Tuple[List[float], List[bool]]:
 
             if parsing and cnt > 3:
                 tokens = line.split()
+                ligand_status = False  # assume things go wrong
                 try:
-                    scores.append(float(tokens[1]))
+                    score = float(tokens[1])
                 except ValueError:
-                    scores.append(0.0)
-                    status.append(False)
+                    score = 0.0
                 else:
-                    status.append(True)
+                    # if going right, check that the value is not crazy
+                    if score > 0.0:
+                        score = 0.0
+                        ligand_status = False
+                    else:
+                        ligand_status = True
+                finally:
+                    scores.append(score)
+                    status.append(ligand_status)
 
     return scores, status
 
