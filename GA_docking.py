@@ -120,6 +120,9 @@ if args.glide_grid is not None:
     if not os.path.exists(glide_grid):
         raise ValueError("The glide grid file '{}' could not be found.".format(glide_grid))
 
+    if "SCHRODINGER" not in os.environ:
+        raise ValueError("Could not find environment variable 'SCHRODINGER'")
+
     if glide_method == "confgen":
         print("")
         print("**NB** Glide method '{}' selected. RDKit confgen disabled.".format(glide_method))
@@ -128,7 +131,12 @@ if args.glide_grid is not None:
 
 if args.smina_grid is not None:
     smina_grid = args.smina_grid
+    if not os.path.exists(smina_grid):
+        raise ValueError("The SMINA grid file '{}' could not be found.".format(smina_grid))
     smina_center = numpy.array(args.smina_center)
+
+    if "SMINA" not in os.environ:
+        raise ValueError("Could not find environment variable 'SMINA'")
 
 print('* RDKit version', rdBase.rdkitVersion)
 print('* population_size', population_size)

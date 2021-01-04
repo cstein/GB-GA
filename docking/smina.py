@@ -4,7 +4,7 @@ import random
 import shutil
 import subprocess
 import stat
-import string
+import sys
 from typing import List, Tuple, Dict, Union
 import zipfile
 
@@ -133,6 +133,14 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
     settings['NCPUS'] = num_cpus
     settings['RECEPTOR'] = receptor
     settings['CX'], settings['CY'], settings['CZ'] = center_of_docking
+    smina_env = "SMINA"
+    if smina_env in os.environ:
+        settings['SMINA'] = os.environ.get(smina_env, "")
+    else:
+        raise ValueError("Could not find environment variable '{}' pointing to SMINA".format(smina_env))
+    settings['EXE'] = "smina.static"
+    if sys.platform == "darwin":
+        settings['EXE'] = "smina.osx"
 
     molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
 
