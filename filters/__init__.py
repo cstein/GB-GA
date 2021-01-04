@@ -2,9 +2,9 @@ import os
 import os.path
 from typing import Union, List
 
-import numpy as np
 import pandas as pd
 from rdkit import Chem
+
 
 def get_molecule_filters(filters: List[str], filter_database: str) -> Union[None, List[Chem.Mol]]:
     """ Returns a list of RDKit molecules appropriate to filter valid molecules.
@@ -17,7 +17,4 @@ def get_molecule_filters(filters: List[str], filter_database: str) -> Union[None
         if not os.path.exists(filter_database):
             raise ValueError("The filter database file '{}' could not be found.".format(filter_database))
         smarts_filters = pd.read_csv(filter_database)
-        filters = smarts_filters.loc[smarts_filters['rule_set_name'].isin(args.molecule_filters)]
-        return [Chem.MolFromSmarts(row['smarts']) for index, row in filters.iterrows()]
-
-
+        return [Chem.MolFromSmarts(row['smarts']) for index, row in smarts_filters.iterrows()]
