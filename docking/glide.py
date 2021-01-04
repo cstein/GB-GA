@@ -116,7 +116,7 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     s2['GLIDE_SHELL_OUT'] = "dock_test.sh"
     schrodinger_env = "SCHRODINGER"
     if schrodinger_env in os.environ:
-        s2['SCHRODPATH'] = os.environ.get("SCHRODINGER", "")
+        s2['SCHRODPATH'] = os.environ.get(schrodinger_env, "")
     else:
         raise ValueError("Could not find environment variable '{}'".format(schrodinger_env))
     shell_exec = s2.pop('GLIDE_SHELL_OUT')
