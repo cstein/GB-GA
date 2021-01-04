@@ -53,12 +53,16 @@ def neutralize_molecules(charged_molecules):
     neutral_molecules = []
     for c_mol in charged_molecules:
         mol = copy.deepcopy(c_mol)
+        mol.UpdatePropertyCache()
+        Chem.rdmolops.FastFindRings(mol)
         assert mol is not None
         for reactant_mol, product_mol in _neutralize_reactions:
             while mol.HasSubstructMatch(reactant_mol):
                 rms = Chem.ReplaceSubstructs(mol, reactant_mol, product_mol)
                 if rms[0] is not None:
                     mol = rms[0]
+        mol.UpdatePropertyCache()
+        Chem.rdmolops.FastFindRings(mol)
         neutral_molecules.append(mol)
     return neutral_molecules
 
