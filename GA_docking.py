@@ -88,7 +88,8 @@ You can optionally (but almost always) specify where to dock using the --smina-c
 """
 smina_settings = ap.add_argument_group("SMINA Settings", s)
 smina_settings.add_argument("--smina-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to SMINA docking grid. The presence of this keyword activates SMINA docking.")
-smina_settings.add_argument("--smina-center", nargs=3, type=float, default=[0.0, 0.0, 0.0], help="Center for docking with SMINA in host.")
+smina_settings.add_argument("--smina-center", metavar="coord", nargs=3, type=float, default=[0.0, 0.0, 0.0], help="Center for docking with SMINA in host. Default is %(default)s.")
+smina_settings.add_argument("--smina-box-size", metavar="length", type=float, default=15, help="Size of the box in Angstrom to dock in around the center. Default is %(default)s.")
 
 args = ap.parse_args()
 
@@ -149,6 +150,7 @@ if args.smina_grid is not None:
     if not os.path.exists(smina_grid):
         raise ValueError("The SMINA grid file '{}' could not be found.".format(smina_grid))
     smina_center = numpy.array(args.smina_center)
+    smina_box_size = args.smina_box_size
 
     if "SMINA" not in os.environ:
         raise ValueError("Could not find environment variable 'SMINA'")
@@ -179,6 +181,7 @@ if args.smina_grid is not None:
     print('*** SMINA SETTINGS ***')
     print('* grid', smina_grid)
     print('* center', smina_center)
+    print('* box size', smina_box_size)
 print('* ')
 print('run,score,smiles,generations,prune,seed')
 
@@ -196,7 +199,7 @@ if __name__ == '__main__':
     if args.glide_grid is not None:
         population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
     elif args.smina_grid is not None:
-        population, scores = docking.smina_score(population, basename, smina_grid, smina_center, num_conformations, num_cpus)
+        population, scores = docking.smina_score(population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
     else:
         raise ValueError("How did you end up here?")
     if sa_screening:
@@ -211,7 +214,7 @@ if __name__ == '__main__':
         if args.glide_grid is not None:
             new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
         elif args.smina_grid is not None:
-            new_population, new_scores = docking.smina_score(new_population, basename, smina_grid, smina_center, num_conformations, num_cpus)
+            new_population, new_scores = docking.smina_score(new_population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
         else:
             raise ValueError("How did you end up here?")
         if sa_screening:

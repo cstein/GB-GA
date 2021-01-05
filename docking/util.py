@@ -84,14 +84,18 @@ def get_structure(mol, num_conformations):
         return new_mol
 
 
-def smiles_to_sdf(mol, name):
+def smiles_to_sdf(mol, filename):
     """ Writes an RDKit molecule to SDF format
 
     :param rdkit.Chem.Mol mol:
-    :param str name: The filename to write to (including extension)
+    :param str filename: The filename to write to (including extension)
     :return: None
     """
-    Chem.SDWriter("{}".format(name)).write(mol)
+    if mol is None:
+        raise ValueError("smiles_to_sdf: molecule is not valid.")
+    if len(filename) == 0:
+        raise ValueError("smiles_to_sdf: filename is empty.")
+    Chem.SDWriter("{}".format(filename)).write(mol)
 
 
 def par_get_structure(mol):

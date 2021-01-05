@@ -1,14 +1,12 @@
 import multiprocessing as mp
 import os
-import random
 import shutil
-import subprocess
 import stat
 import sys
-from typing import List, Tuple, Dict, Union
+from typing import List, Tuple
 import zipfile
 
-from .util import choices, molecules_to_structure, smiles_to_sdf, shell, substitute_file
+from .util import molecules_to_structure, smiles_to_sdf, shell, substitute_file
 
 import numpy as np
 
@@ -17,16 +15,16 @@ from rdkit import Chem
 
 
 SMINA_SETTINGS = {
-    'RECEPTOR': "../test.pdbqt",
+    'RECEPTOR': "",
     'LIGAND': "ligand.sdf",
     'NCPUS': 1,
-    'AUTOBOXADD': 8,
     'BASENAME': "",
     'SMINA_SHELL_IN': "smina_dock.in.sh",
     'CX': 0.0,
     'CY': 0.0,
     'CZ': 0.0,
-    'NUMMODES': 1
+    'NUMMODES': 1,
+    'BOXSIZE': 15
 }
 
 
@@ -117,7 +115,7 @@ def dock(directory: str):
     os.chdir("..")
 
 
-def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, center_of_docking: np.ndarray, num_conformations: int, num_cpus: int):
+def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, center_of_docking: np.ndarray, box_size: float, num_conformations: int, num_cpus: int):
     """ Scores a population of RDKit molecules with the Smina program
 
     :param population:
@@ -139,6 +137,7 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
     settings['NCPUS'] = num_cpus
     settings['RECEPTOR'] = receptor
     settings['CX'], settings['CY'], settings['CZ'] = center_of_docking
+    settings['BOXSIZE'] = box_size
     smina_env = "SMINA"
     if smina_env in os.environ:
         settings['SMINA'] = os.environ.get(smina_env, "")
