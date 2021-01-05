@@ -96,11 +96,9 @@ def parse_output(basename: str) -> Tuple[List[float], List[bool]]:
                     score = 0.0
                 else:
                     # if going right, check that the value is not crazy
+                    ligand_status = True
                     if score > 0.0:
                         score = 0.0
-                        ligand_status = False
-                    else:
-                        ligand_status = True
                 finally:
                     scores.append(score)
                     status.append(ligand_status)
