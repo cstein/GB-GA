@@ -179,7 +179,7 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
         os.chdir("..")
 
     # traverse folders and add content to .zip file
-    zipf = zipfile.ZipFile('out.zip', 'w')
+    zipf = zipfile.ZipFile("{}.zip".format(basename), 'w')
     for directory in directories:
         for root, d, files in os.walk(directory):
             for f in files:
