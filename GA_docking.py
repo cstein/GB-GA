@@ -4,12 +4,9 @@ import os
 import os.path
 import pickle
 import random
-import sys
 import time
-from typing import List, Union
 
 import numpy
-import pandas as pd
 from rdkit import rdBase
 from rdkit import Chem
 
@@ -45,9 +42,13 @@ prune_population: bool = True
 basename = ""
 sa_screening = False
 
+
 ap = argparse.ArgumentParser()
 ap.add_argument("smilesfile", metavar="file", type=str, help="input filename of file with SMILES")
-ga_settings = ap.add_argument_group("Genetic Algorithm Settings", description="")
+s = """
+Options for controlling the genetic algorithm.
+"""
+ga_settings = ap.add_argument_group("Genetic Algorithm Settings", s)
 ga_settings.add_argument("--basename", metavar="name", type=str, default=basename, help="Basename used for output and iterations to distinguish from other calculations.")
 ga_settings.add_argument("-i", "--iter", metavar="number", type=int, default=n_tries, help="Number of attempts to run entire generations. Default: %(default)s.")
 ga_settings.add_argument("-g", "--numgen", metavar="number", type=int, default=num_generations, help="Number of generations. Default: %(default)s.")
@@ -59,19 +60,33 @@ ga_settings.add_argument("--maxscore", metavar="float", type=float, default=max_
 ga_settings.add_argument("--randint", metavar="number", type=int, default=-1, help="Specify a positive integer as random seed. Any other values will sample a number from random distribution. Default: %(default)s")
 ga_settings.add_argument("--no-prune", default=prune_population, action="store_false", help="No pruning of mating pools and generations.")
 
-molecule_settings = ap.add_argument_group("Molecule Settings")
+s = """
+Options for controlling molecule size and applying filters to remove bad molecules.
+"""
+molecule_settings = ap.add_argument_group("Molecule Settings", s)
 molecule_settings.add_argument("--mol-size", dest="molecule_size", metavar="number", type=int, default=molecule_size_average, help="Expected average size of molecule. Prevents unlimited growth. Default: %(default)s.")
 molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="number", type=int, default=molecule_size_standard_deviation, help="Standard deviation of size of molecule. Default: %(default)s.")
 molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
 molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_database", metavar="file", type=str, action=ExpandPath, default="./alert_collection.csv", help="File with filters. Default: %(default)s")
 molecule_settings.add_argument("--mol-sa-screening", dest="sa_screening", default=sa_screening, action="store_true", help="Add this option to enable synthetic accesibility screening")
 
-glide_settings = ap.add_argument_group("Glide Settings")
+s = """
+Options for using Glide for docking with GB-GA.
+The presence of the keyword --glide-grid and specification of a Glide grid file (.zip) activates Glide.
+Set the environment variable SCHRODINGER to point to your install location of the Schrodinger package.
+"""
+glide_settings = ap.add_argument_group("Glide Settings", s)
 glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to GLIDE docking grid. The presence of this keyword activates GLIDE docking.")
 glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
 glide_settings.add_argument("--glide-method", metavar="method", type=str, default="confgen", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
 
-smina_settings = ap.add_argument_group("SMINA Settings")
+s = """
+Options for using SMINA for docking with GB-GA.
+The presence of the keyword --smina-grid and specification of a .pdbqt host file activates SMINA.
+Set the environment variable SMINA to point to your install location of the Schrodinger package.
+You can optionally (but almost always) specify where to dock using the --smina-center option.
+"""
+smina_settings = ap.add_argument_group("SMINA Settings", s)
 smina_settings.add_argument("--smina-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to SMINA docking grid. The presence of this keyword activates SMINA docking.")
 smina_settings.add_argument("--smina-center", nargs=3, type=float, default=[0.0, 0.0, 0.0], help="Center for docking with SMINA in host.")
 
