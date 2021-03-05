@@ -6,6 +6,8 @@ import subprocess
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
+from typing import List, Tuple
+
 
 def choices(sin, nin=6):
     result = []
@@ -102,18 +104,18 @@ def par_get_structure(mol):
     return get_structure(mol, 5)
 
 
-def molecules_to_structure(population, num_conformations, num_cpus):
+def molecules_to_structure(population: List[Chem.Mol], num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[str], List[Chem.Mol]]:
     """ Converts RDKit molecules to structures
 
-        :param list[rdkit.Chem.Mol] population: molecules
-        :param int num_conformations: number of conformations to generate
-        :param int num_cpus: number of cpus to use
-
+        :param population: molecules without 3D structures
+        :param num_conformations: number of conformations to generate for each ligand. Only returns the best.
+        :param num_cpus: number of cpus to use
+        :returns: A tuple consisting of a list of RDKit molecules with 3D geometry, a list of molecule names and a list with the populatiob molecules
     """
 
-    pool = mp.Pool(num_cpus)
     try:
-        generated_molecules = pool.map(par_get_structure, population)
+        with mp.Pool(num_cpus) as pool:
+            generated_molecules = pool.map(par_get_structure, population)
     except OSError:
         generated_molecules = [par_get_structure(p) for p in population]
 

@@ -149,7 +149,8 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
 
     molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
 
-    for name, mol in zip(names, population):
+    print("Writing ...")
+    for name, mol in zip(names, molecules):
         wrk_dir = "{}_{}".format(basename, name)
         os.mkdir(wrk_dir)
         os.chdir(wrk_dir)
@@ -161,9 +162,9 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
         directories.append(wrk_dir)
 
     # this we can do in parallel.
-    pool = mp.Pool()
     try:
-        generated_molecules = pool.map(dock, directories)
+        with mp.Pool(num_cpus) as pool:
+            generated_molecules = pool.map(dock, directories)
     except OSError:
         generated_molecules = [dock(directory) for directory in directories]
 
