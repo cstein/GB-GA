@@ -1,7 +1,8 @@
 """ Functionality to neutralize molecules """
 
-import json
 import copy
+import json
+from typing import List, Tuple
 
 import numpy as np
 from rdkit import Chem
@@ -10,7 +11,7 @@ from .sascorer import calculateScore
 _neutralize_reactions = None
 
 
-def read_neutralizers(name="neutralize"):
+def read_neutralizers(name="neutralize") -> List[Tuple[Chem.Mol, Chem.Mol]]:
     filename = f"sa/{name}.json"
     with open(filename) as json_file:
         reactions = json.load(json_file)
@@ -26,10 +27,10 @@ def read_neutralizers(name="neutralize"):
     return neutralize_reactions
 
 
-def neutralize_smiles(smiles):
+def neutralize_smiles(smiles: List[str]) -> List[str]:
     """ Neutralize a set of SMILES
 
-        :param list smiles: a list of SMILES
+        :param smiles: a list of SMILES
     """
     assert type(smiles) == list
 
@@ -38,12 +39,11 @@ def neutralize_smiles(smiles):
     return [Chem.MolToSmiles(m) for m in neutral_molecules]
 
 
-def neutralize_molecules(charged_molecules):
+def neutralize_molecules(charged_molecules: List[Chem.Mol]) -> List[Chem.Mol]:
     """ Neutralize a set of molecules
 
-    :param list[Chem.Mol] charged_molecules: list of (possibly) charged molecules
+    :param charged_molecules: list of (possibly) charged molecules
     :return: list of neutral molecules
-    :rtype: list[Chem.Mol]
     """
     assert type(charged_molecules) == list
     global _neutralize_reactions
@@ -67,13 +67,13 @@ def neutralize_molecules(charged_molecules):
     return neutral_molecules
 
 
-def sa_score_modifier(sa_scores, mu=2.230044, sigma=0.6526308):
+def sa_score_modifier(sa_scores: List[float], mu: float = 2.230044, sigma: float = 0.6526308):
     """ Computes a synthesizability multiplier for a (range of) synthetic accessibility score(s)
 
         The return value is between 1 (perfectly synthesizable) and 0 (not synthesizable).
         Based on the work of https://arxiv.org/pdf/2002.07007
 
-        :param list[float] sa_scores: list of synthetic availability scores
+        :param sa_scores: list of synthetic availability scores
         :param float mu: average synthetic availability score
         :param float sigma: standard deviation of the score to accept
         :return: re-weighted scores
@@ -83,13 +83,12 @@ def sa_score_modifier(sa_scores, mu=2.230044, sigma=0.6526308):
     return np.exp(-0.5 * np.power((mod_scores - mu) / sigma, 2.))
 
 
-def reweigh_scores_by_sa(population, scores):
+def reweigh_scores_by_sa(population: List[Chem.Mol], scores: List[float]) -> List[float]:
     """ Reweighs docking scores with synthetic accessibility
 
-        :param list[Chem.Mol] population: list of RDKit molecules to be re-weighted
-        :param list[float] scores: list of docking scores
+        :param population: list of RDKit molecules to be re-weighted
+        :param scores: list of docking scores
         :return: list of re-weighted docking scores
-        :rtype: list[float]
     """
     sa_scores = sa_score_modifier([calculateScore(p) for p in population])
     scores = [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores and force list type
