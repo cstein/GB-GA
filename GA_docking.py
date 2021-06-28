@@ -39,9 +39,6 @@ def reweigh_scores_by_logp(population: List[Chem.Mol], scores: List[float], targ
         :return: list of re-weighted docking scores
     """
     logp_target_scores = [logp_target_score_clipped(p, target, sigma) for p in population]
-    print("logP:", logp_target_scores)
-    print("Smiles", [Chem.MolToSmiles(p) for p in population])
-    print("Scores", scores)
     return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
 
 
