@@ -67,34 +67,6 @@ def neutralize_molecules(charged_molecules: List[Chem.Mol]) -> List[Chem.Mol]:
     return neutral_molecules
 
 
-def sa_score_modifier(sa_scores: List[float], mu: float = 2.230044, sigma: float = 0.6526308):
-    """ Computes a synthesizability multiplier for a (range of) synthetic accessibility score(s)
-
-        The return value is between 1 (perfectly synthesizable) and 0 (not synthesizable).
-        Based on the work of https://arxiv.org/pdf/2002.07007
-
-        :param sa_scores: list of synthetic availability scores
-        :param float mu: average synthetic availability score
-        :param float sigma: standard deviation of the score to accept
-        :return: re-weighted scores
-        :rtype: np.ndarray
-    """
-    mod_scores = np.maximum(sa_scores, mu)
-    return np.exp(-0.5 * np.power((mod_scores - mu) / sigma, 2.))
-
-
-def reweigh_scores_by_sa(population: List[Chem.Mol], scores: List[float]) -> List[float]:
-    """ Reweighs docking scores with synthetic accessibility
-
-        :param population: list of RDKit molecules to be re-weighted
-        :param scores: list of docking scores
-        :return: list of re-weighted docking scores
-    """
-    sa_scores = sa_score_modifier([calculateScore(p) for p in population])
-    scores = [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores and force list type
-    return scores
-
-
 if __name__ == '__main__':
     s_q = "c1ccccc1C(C(=O)[O-])c2ccccc2"
     s_q = "c1cccc(c12)cc(cc2)C[NH+]([NH3+])C(=O)[NH3+]"

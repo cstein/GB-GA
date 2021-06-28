@@ -1,4 +1,22 @@
 """ Files and functionality related to synthetic accessibility """
 
+import numpy as np
+from typing import List
+
 from .sascorer import calculateScore
-from .neutralize import reweigh_scores_by_sa, neutralize_molecules
+from .neutralize import neutralize_molecules
+from modifiers import gaussian_modifier_clipped
+
+
+def sa_target_score_clipped(m, target: float = 2.230044, sigma: float = 0.6526308) -> float:
+    """ Computes a synthesizability multiplier for a (range of) synthetic accessibility score(s)
+
+        The return value is between 1 (perfectly synthesizable) and 0 (not synthesizable).
+        Based on the work of https://arxiv.org/pdf/2002.07007. Default values from paper.
+
+        :param m: RDKit molecule
+        :param target: the target logp value
+        :param sigma: the width of the gaussian distribution
+    """
+    score: float = calculateScore(m)
+    return gaussian_modifier_clipped(score, target, sigma)

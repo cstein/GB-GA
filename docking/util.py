@@ -80,7 +80,7 @@ def get_structure(mol, num_conformations):
             AllChem.EmbedMolecule(new_mol)
             AllChem.MMFFOptimizeMolecule(new_mol)
     except ValueError:
-        print("Error: get_structure: '{}' could not converted to 3D".format(s_mol))
+        print("Error: get_structure: '{}' could not convert to 3D".format(s_mol))
         new_mol = None
     finally:
         return new_mol

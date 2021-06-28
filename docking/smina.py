@@ -149,7 +149,6 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
 
     molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
 
-    print("Writing ...")
     for name, mol in zip(names, molecules):
         wrk_dir = "{}_{}".format(basename, name)
         os.mkdir(wrk_dir)
@@ -195,4 +194,3 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
 
     # flip sign on scores before sending back. Algorithm _maximizes_ the score.
     return population, [-s for s in scores]
-

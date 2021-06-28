@@ -17,8 +17,8 @@ GLIDE_SETTINGS = {
   'LIGANDFILES': [],
   'WRITE_CSV': True,
   'POSTDOCK': True,
-  'DOCKING_METHOD': "rigid",    # confgen
-  'PRECISION': "HTVS"          # sp
+  'DOCKING_METHOD': "rigid",
+  'PRECISION': "SP"
 }
 
 SHELL_SETTINGS = {

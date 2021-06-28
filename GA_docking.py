@@ -5,6 +5,7 @@ import os.path
 import pickle
 import random
 import time
+from typing import List
 
 import numpy
 from rdkit import rdBase
@@ -15,7 +16,33 @@ import GB_GA as ga
 import docking
 import filters
 
-from sa import reweigh_scores_by_sa, neutralize_molecules
+from sa import calculateScore, sa_target_score_clipped, neutralize_molecules
+from logp import logp_target_score_clipped
+
+
+def reweigh_scores_by_sa(population: List[Chem.Mol], scores: List[float]) -> List[float]:
+    """ Reweighs scores with synthetic accessibility score
+
+        :param population: list of RDKit molecules to be re-weighted
+        :param scores: list of docking scores
+        :return: list of re-weighted docking scores
+    """
+    sa_scores = [sa_target_score_clipped(p) for p in population]
+    return [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores and force list type
+
+
+def reweigh_scores_by_logp(population: List[Chem.Mol], scores: List[float], target: float, sigma: float) -> List[float]:
+    """ Reweighs docking scores with logp
+
+        :param population: list of RDKit molecules to be re-weighted
+        :param scores: list of docking scores
+        :return: list of re-weighted docking scores
+    """
+    logp_target_scores = [logp_target_score_clipped(p, target, sigma) for p in population]
+    print("logP:", logp_target_scores)
+    print("Smiles", [Chem.MolToSmiles(p) for p in population])
+    print("Scores", scores)
+    return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
 
 
 class ExpandPath(argparse.Action):
@@ -41,6 +68,9 @@ molecule_size_standard_deviation = 5
 prune_population: bool = True
 basename = ""
 sa_screening = False
+logp_screening = False
+logp_target = 3.5
+logp_sigma = 2.0
 
 
 ap = argparse.ArgumentParser()
@@ -69,6 +99,9 @@ molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="nu
 molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
 molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_database", metavar="file", type=str, action=ExpandPath, default="./alert_collection.csv", help="File with filters. Default: %(default)s")
 molecule_settings.add_argument("--mol-sa-screening", dest="sa_screening", default=sa_screening, action="store_true", help="Add this option to enable synthetic accesibility screening")
+molecule_settings.add_argument("--mol-logp-screening", dest="logp_screening", default=logp_screening, action="store_true", help="Add this option to enable logP screening")
+molecule_settings.add_argument("--mol-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
+molecule_settings.add_argument("--mol-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
 
 s = """
 Options for using Glide for docking with GB-GA.
@@ -78,7 +111,7 @@ Set the environment variable SCHRODINGER to point to your install location of th
 glide_settings = ap.add_argument_group("Glide Settings", s)
 glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to GLIDE docking grid. The presence of this keyword activates GLIDE docking.")
 glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
-glide_settings.add_argument("--glide-method", metavar="method", type=str, default="confgen", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
+glide_settings.add_argument("--glide-method", metavar="method", type=str, default="rigid", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
 
 s = """
 Options for using SMINA for docking with GB-GA.
@@ -115,6 +148,9 @@ molecule_filter = filters.get_molecule_filters(args.molecule_filters, args.molec
 
 basename = args.basename
 sa_screening = args.sa_screening
+logp_screening = args.logp_screening
+logp_target = args.logp_target
+logp_sigma = args.logp_sigma
 
 # Determine docking method (Glide or SMINA)
 # Is docking activated?
@@ -172,6 +208,11 @@ print('* average molecular size and standard deviation', co.average_size, co.siz
 print('* molecule filters', args.molecule_filters)
 print('* molecule filters database', args.molecule_filters_database)
 print('* synthetic availability screen', sa_screening)
+print('* logP screening', logp_screening)
+if logp_screening:
+    print('* logP target', logp_target)
+    print('* logP sigma', logp_sigma)
+
 if args.glide_grid is not None:
     print('*** GLIDE SETTINGS ***')
     print('* grid', glide_grid)
@@ -202,8 +243,13 @@ if __name__ == '__main__':
         population, scores = docking.smina_score(population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
     else:
         raise ValueError("How did you end up here?")
+
     if sa_screening:
         scores = reweigh_scores_by_sa(neutralize_molecules(population), scores)
+
+    if logp_screening:
+        scores = reweigh_scores_by_logp(population, scores, logp_target, logp_sigma)
+
     fitness = ga.calculate_normalized_fitness(scores)
 
     for generation in range(num_generations):
@@ -217,9 +263,14 @@ if __name__ == '__main__':
             new_population, new_scores = docking.smina_score(new_population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
         else:
             raise ValueError("How did you end up here?")
+
         if sa_screening:
             new_scores = reweigh_scores_by_sa(neutralize_molecules(new_population), new_scores)
             assert len(new_scores) == len(new_population)
+
+        if logp_screening:
+            new_scores = reweigh_scores_by_logp(population, new_scores, logp_target, logp_sigma)
+
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)
         fitness = ga.calculate_normalized_fitness(scores)
 
