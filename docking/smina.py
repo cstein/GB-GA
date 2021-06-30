@@ -6,7 +6,7 @@ import sys
 from typing import List, Tuple
 import zipfile
 
-from .util import molecules_to_structure, smiles_to_sdf, shell, substitute_file
+from .util import molecules_to_structure, molecule_to_sdf, shell, substitute_file
 
 import numpy as np
 
@@ -115,13 +115,15 @@ def dock(directory: str):
     os.chdir("..")
 
 
-def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, center_of_docking: np.ndarray, box_size: float, num_conformations: int, num_cpus: int):
+def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor: str, center_of_docking: np.ndarray,
+                box_size: float, num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[float]]:
     """ Scores a population of RDKit molecules with the Smina program
 
     :param population:
     :param basename: Basename to use for output purposes
     :param receptor:
     :param center_of_docking:
+    :param box_size:
     :param num_conformations: Number of conformations to generate through RDKit if chosen
     :param num_cpus:
     :return:
@@ -154,7 +156,7 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor:str, c
         os.mkdir(wrk_dir)
         os.chdir(wrk_dir)
         mol_no_hydrogen = remove_hydrogens(mol)
-        smiles_to_sdf(mol_no_hydrogen, settings['LIGAND'])
+        molecule_to_sdf(mol_no_hydrogen, settings['LIGAND'])
         write_shell_executable(settings, "smina_dock.sh")
         os.chmod("smina_dock.sh", stat.S_IRWXU)
         os.chdir("..")

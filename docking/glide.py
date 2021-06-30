@@ -6,10 +6,12 @@ import shutil
 import os
 import stat
 import string
+from typing import List, Tuple
 
 import numpy as np
+from rdkit import Chem
 
-from .util import choices, molecules_to_structure, smiles_to_sdf, shell, substitute_file
+from .util import choices, molecules_to_structure, molecule_to_sdf, shell, substitute_file
 
 GLIDE_SETTINGS = {
   'COMPRESS_POSES': False,
@@ -81,18 +83,18 @@ def parse_output():
     return np.array(scores), np.array(status)
 
 
-def glide_score(population, method, precision, gridfile, basename, num_conformations, num_cpus):
+def glide_score(population: List[Chem.Mol], basename: str, gridfile: str, method: str, precision: str,
+                num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[float]]:
     """ Scores a population of RDKit molecules with the Glide program from the Schrodinger package
 
-    :param list[rdkit.Chem.Mol] population:
-    :param str method: The docking method to use (confgen, rigid, mininplace or inplace)
-    :param str precision: Docking precision (HTVS, SP or XP)
-    :param str gridfile: The gridfile to dock into (a .zip file)
-    :param str basename: Basename to use for output purposes
+    :param population:
+    :param basename: Basename to use for output purposes
+    :param gridfile: The gridfile to dock into (a .zip file)
+    :param method: The docking method to use (confgen, rigid, mininplace or inplace)
+    :param precision: Docking precision (HTVS, SP or XP)
     :param int num_conformations: Number of conformations to generate through RDKit if chosen
     :param int num_cpus: number of CPUs to use pr. docking job
     :return: lists of molecules and scores
-    :rtype: tuple[list[rdkit.Chem.mol], list[float]]
     """
     molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
     indices = [i for i, m in enumerate(molecules)]
@@ -125,7 +127,7 @@ def glide_score(population, method, precision, gridfile, basename, num_conformat
     # change to work directory
     os.chdir(wrk_dir)
     for mol, filename in zip(molecules, filenames):
-        smiles_to_sdf(mol, filename)
+        molecule_to_sdf(mol, filename)
 
     # execute docking
     os.chmod(shell_exec, stat.S_IRWXU)

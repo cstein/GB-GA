@@ -7,7 +7,7 @@ import random
 import time
 from typing import List
 
-import numpy
+import numpy as np
 from rdkit import rdBase
 from rdkit import Chem
 
@@ -16,7 +16,7 @@ import GB_GA as ga
 import docking
 import filters
 
-from sa import calculateScore, sa_target_score_clipped, neutralize_molecules
+from sa import sa_target_score_clipped, neutralize_molecules
 from logp import logp_target_score_clipped
 
 
@@ -107,7 +107,7 @@ Set the environment variable SCHRODINGER to point to your install location of th
 """
 glide_settings = ap.add_argument_group("Glide Settings", s)
 glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to GLIDE docking grid. The presence of this keyword activates GLIDE docking.")
-glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
+glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP", "XP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
 glide_settings.add_argument("--glide-method", metavar="method", type=str, default="rigid", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
 
 s = """
@@ -140,7 +140,7 @@ max_score = args.maxscore
 if args.randint > 0:
     random_seeds = [args.randint for i in range(n_tries)]
 else:
-    random_seeds = numpy.random.randint(100000, size=n_tries)
+    random_seeds = np.random.randint(100000, size=n_tries)
 molecule_filter = filters.get_molecule_filters(args.molecule_filters, args.molecule_filters_database)
 
 basename = args.basename
@@ -182,7 +182,7 @@ if args.smina_grid is not None:
     smina_grid = args.smina_grid
     if not os.path.exists(smina_grid):
         raise ValueError("The SMINA grid file '{}' could not be found.".format(smina_grid))
-    smina_center = numpy.array(args.smina_center)
+    smina_center = np.array(args.smina_center)
     smina_box_size = args.smina_box_size
 
     if "SMINA" not in os.environ:
@@ -229,13 +229,13 @@ t0 = time.time()
 random_seed = random_seeds[0]
 if __name__ == '__main__':
 
-    numpy.random.seed(random_seed)
+    np.random.seed(random_seed)
     random.seed(random_seed)
 
     population = ga.make_initial_population(population_size, smiles_filename)
 
     if args.glide_grid is not None:
-        population, scores = docking.glide_score(population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
+        population, scores = docking.glide_score(population, basename, glide_grid, glide_method, glide_precision, num_conformations, num_cpus)
     elif args.smina_grid is not None:
         population, scores = docking.smina_score(population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
     else:
@@ -255,7 +255,7 @@ if __name__ == '__main__':
         new_population = ga.reproduce(mating_pool, population_size, mutation_rate, molecule_filter)
 
         if args.glide_grid is not None:
-            new_population, new_scores = docking.glide_score(new_population, glide_method, glide_precision, glide_grid, basename, num_conformations, num_cpus)
+            new_population, new_scores = docking.glide_score(new_population, basename, glide_grid, glide_method, glide_precision, num_conformations, num_cpus)
         elif args.smina_grid is not None:
             new_population, new_scores = docking.smina_score(new_population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
         else:
@@ -282,6 +282,6 @@ if __name__ == '__main__':
 
     t1 = time.time()
     print("")
-    print("max score = {0:.2f}, mean = {1:.2f} +/- {2:.2f}".format(max(scores), numpy.mean(scores), numpy.std(scores)))
+    print("max score = {0:.2f}, mean = {1:.2f} +/- {2:.2f}".format(max(scores), np.mean(scores), np.std(scores)))
     print("molecule: ", smiles[0])
     print("time = {0:.2f} minutes".format((t1-t0)/60.0))

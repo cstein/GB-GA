@@ -2,11 +2,12 @@ import multiprocessing as mp
 import random
 import string
 import subprocess
+from typing import Optional
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 
 def choices(sin, nin=6):
@@ -48,7 +49,7 @@ def shell(cmd, program, shell=False):
             raise ValueError("{} Error: Error with docking. Check logs.".format(program))
 
 
-def get_structure(mol, num_conformations):
+def get_structure(mol: Chem.Mol, num_conformations: int) -> Union[None, Chem.Mol]:
     """ Converts an RDKit molecule (2D representation) to a 3D representation
 
     :param Chem.Mol mol: the RDKit molecule
@@ -86,22 +87,21 @@ def get_structure(mol, num_conformations):
         return new_mol
 
 
-def smiles_to_sdf(mol, filename):
+def molecule_to_sdf(mol: Chem.Mol, filename: str, name: Optional[str] = None):
     """ Writes an RDKit molecule to SDF format
 
-    :param rdkit.Chem.Mol mol:
-    :param str filename: The filename to write to (including extension)
+    :param mol: the RDKit molecule
+    :param filename: The filename to write to (including extension)
+    :param name: Optional internal name in file
     :return: None
     """
     if mol is None:
-        raise ValueError("smiles_to_sdf: molecule is not valid.")
+        raise ValueError("molecule_to_sdf: molecule is not valid.")
     if len(filename) == 0:
-        raise ValueError("smiles_to_sdf: filename is empty.")
+        raise ValueError("molecule_to_sdf: filename is empty.")
+    if name is not None:
+        mol.SetProp("_Name", name)
     Chem.SDWriter("{}".format(filename)).write(mol)
-
-
-def par_get_structure(mol):
-    return get_structure(mol, 5)
 
 
 def molecules_to_structure(population: List[Chem.Mol], num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[str], List[Chem.Mol]]:
@@ -113,15 +113,12 @@ def molecules_to_structure(population: List[Chem.Mol], num_conformations: int, n
         :returns: A tuple consisting of a list of RDKit molecules with 3D geometry, a list of molecule names and a list with the populatiob molecules
     """
 
-    try:
-        with mp.Pool(num_cpus) as pool:
-            generated_molecules = pool.map(par_get_structure, population)
-    except OSError:
-        generated_molecules = [par_get_structure(p) for p in population]
+    with mp.Pool(num_cpus) as pool:
+        args = [(p, num_conformations) for p in population]
+        generated_molecules = pool.starmap(get_structure, args)
 
-    molecules = [mol for mol in generated_molecules if mol is not None]
-    names = [''.join(choices(string.ascii_uppercase + string.digits, 6)) for pop in molecules]
-    updated_population = [p for (p, m) in zip(population, generated_molecules) if m is not None]
+        molecules = [mol for mol in generated_molecules if mol is not None]
+        names = [''.join(choices(string.ascii_uppercase + string.digits, 6)) for pop in molecules]
+        updated_population = [p for (p, m) in zip(population, generated_molecules) if m is not None]
 
-    return molecules, names, updated_population
-
+        return molecules, names, updated_population
