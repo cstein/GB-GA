@@ -5,7 +5,7 @@ import os.path
 import pickle
 import random
 import time
-from typing import List
+from typing import List, Union
 
 import numpy as np
 from rdkit import rdBase
@@ -64,6 +64,7 @@ molecule_size_average = 50
 molecule_size_standard_deviation = 5
 prune_population: bool = True
 basename = ""
+glide_expanded_sampling = False
 sa_screening = False
 logp_screening = False
 logp_target = 3.5
@@ -72,10 +73,10 @@ logp_sigma = 2.0
 
 ap = argparse.ArgumentParser()
 ap.add_argument("smilesfile", metavar="file", type=str, help="input filename of file with SMILES")
-s = """
+doc_string: str = """
 Options for controlling the genetic algorithm.
 """
-ga_settings = ap.add_argument_group("Genetic Algorithm Settings", s)
+ga_settings = ap.add_argument_group("Genetic Algorithm Settings", doc_string)
 ga_settings.add_argument("--basename", metavar="name", type=str, default=basename, help="Basename used for output and iterations to distinguish from other calculations.")
 ga_settings.add_argument("-i", "--iter", metavar="number", type=int, default=n_tries, help="Number of attempts to run entire generations. Default: %(default)s.")
 ga_settings.add_argument("-g", "--numgen", metavar="number", type=int, default=num_generations, help="Number of generations. Default: %(default)s.")
@@ -87,10 +88,10 @@ ga_settings.add_argument("--maxscore", metavar="float", type=float, default=max_
 ga_settings.add_argument("--randint", metavar="number", type=int, default=-1, help="Specify a positive integer as random seed. Any other values will sample a number from random distribution. Default: %(default)s")
 ga_settings.add_argument("--no-prune", default=prune_population, action="store_false", help="No pruning of mating pools and generations.")
 
-s = """
+doc_string = """
 Options for controlling molecule size and applying filters to remove bad molecules.
 """
-molecule_settings = ap.add_argument_group("Molecule Settings", s)
+molecule_settings = ap.add_argument_group("Molecule Settings", doc_string)
 molecule_settings.add_argument("--mol-size", dest="molecule_size", metavar="number", type=int, default=molecule_size_average, help="Expected average size of molecule. Prevents unlimited growth. Default: %(default)s.")
 molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="number", type=int, default=molecule_size_standard_deviation, help="Standard deviation of size of molecule. Default: %(default)s.")
 molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
@@ -100,23 +101,24 @@ molecule_settings.add_argument("--mol-logp-screening", dest="logp_screening", de
 molecule_settings.add_argument("--mol-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
 molecule_settings.add_argument("--mol-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
 
-s = """
+doc_string = """
 Options for using Glide for docking with GB-GA.
 The presence of the keyword --glide-grid and specification of a Glide grid file (.zip) activates Glide.
 Set the environment variable SCHRODINGER to point to your install location of the Schrodinger package.
 """
-glide_settings = ap.add_argument_group("Glide Settings", s)
+glide_settings = ap.add_argument_group("Glide Settings", doc_string)
 glide_settings.add_argument("--glide-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to GLIDE docking grid. The presence of this keyword activates GLIDE docking.")
 glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP", "XP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
 glide_settings.add_argument("--glide-method", metavar="method", type=str, default="rigid", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
+glide_settings.add_argument("--glide-expanded-sampling", default=glide_expanded_sampling, action="store_true", help="Enables expanded sampling when docking with Glide.")
 
-s = """
+doc_string = """
 Options for using SMINA for docking with GB-GA.
 The presence of the keyword --smina-grid and specification of a .pdbqt host file activates SMINA.
 Set the environment variable SMINA to point to your install location of the Schrodinger package.
 You can optionally (but almost always) specify where to dock using the --smina-center option.
 """
-smina_settings = ap.add_argument_group("SMINA Settings", s)
+smina_settings = ap.add_argument_group("SMINA Settings", doc_string)
 smina_settings.add_argument("--smina-grid", metavar="grid", type=str, default=None, action=ExpandPath, help="Path to SMINA docking grid. The presence of this keyword activates SMINA docking.")
 smina_settings.add_argument("--smina-center", metavar="coord", nargs=3, type=float, default=[0.0, 0.0, 0.0], help="Center for docking with SMINA in host. Default is %(default)s.")
 smina_settings.add_argument("--smina-box-size", metavar="length", type=float, default=15, help="Size of the box in Angstrom to dock in around the center. Default is %(default)s.")
@@ -166,6 +168,7 @@ if args.glide_grid is not None:
     glide_method = args.glide_method
     glide_precision = args.glide_precision
     glide_grid = args.glide_grid
+    glide_expanded_sampling = args.glide_expanded_sampling
     if not os.path.exists(glide_grid):
         raise ValueError("The glide grid file '{}' could not be found.".format(glide_grid))
 
@@ -215,6 +218,7 @@ if args.glide_grid is not None:
     print('* grid', glide_grid)
     print('* precision', glide_precision)
     print('* method', glide_method)
+    print('* expanded sampling', glide_expanded_sampling)
 if args.smina_grid is not None:
     print('*** SMINA SETTINGS ***')
     print('* grid', smina_grid)
@@ -223,51 +227,48 @@ if args.smina_grid is not None:
 print('* ')
 print('run,score,smiles,generations,prune,seed')
 
-t0 = time.time()
 
-# for i, random_seed in zip(range(n_tries), random_seeds):
-random_seed = random_seeds[0]
-if __name__ == '__main__':
+def score(pop, args):
+    """ Scores the population with an appropriate docking method
 
-    np.random.seed(random_seed)
-    random.seed(random_seed)
+        The scoring also takes care of synthesizability (SA) and
+        solvability (logP) scaling of the score.
 
-    population = ga.make_initial_population(population_size, smiles_filename)
-
+    """
     if args.glide_grid is not None:
-        population, scores = docking.glide_score(population, basename, glide_grid, glide_method, glide_precision, num_conformations, num_cpus)
+        pop, s = docking.glide_score(pop, basename, glide_grid, glide_method, glide_precision, num_conformations, num_cpus)
     elif args.smina_grid is not None:
-        population, scores = docking.smina_score(population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
+        pop, s = docking.smina_score(pop, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
     else:
         raise ValueError("How did you end up here?")
 
     if sa_screening:
-        scores = reweigh_scores_by_sa(neutralize_molecules(population), scores)
+        s = reweigh_scores_by_sa(neutralize_molecules(pop), s)
 
     if logp_screening:
-        scores = reweigh_scores_by_logp(population, scores, logp_target, logp_sigma)
+        s = reweigh_scores_by_logp(pop, s, logp_target, logp_sigma)
+
+    return pop, s
+
+
+if __name__ == '__main__':
+    t0 = time.time()
+    random_seed = random_seeds[0]
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+
+    initial_population = ga.make_initial_population(population_size, smiles_filename)
+    population, scores = score(initial_population, args)
 
     fitness = ga.calculate_normalized_fitness(scores)
 
     for generation in range(num_generations):
         t1_gen = time.time()
+
         mating_pool = ga.make_mating_pool(population, fitness, mating_pool_size)
         new_population = ga.reproduce(mating_pool, population_size, mutation_rate, molecule_filter)
 
-        if args.glide_grid is not None:
-            new_population, new_scores = docking.glide_score(new_population, basename, glide_grid, glide_method, glide_precision, num_conformations, num_cpus)
-        elif args.smina_grid is not None:
-            new_population, new_scores = docking.smina_score(new_population, basename, smina_grid, smina_center, smina_box_size, num_conformations, num_cpus)
-        else:
-            raise ValueError("How did you end up here?")
-
-        if sa_screening:
-            new_scores = reweigh_scores_by_sa(neutralize_molecules(new_population), new_scores)
-            assert len(new_scores) == len(new_population)
-
-        if logp_screening:
-            new_scores = reweigh_scores_by_logp(population, new_scores, logp_target, logp_sigma)
-
+        new_population, new_scores = score(new_population, args)
         population, scores = ga.sanitize(population+new_population, scores+new_scores, population_size, prune_population)
         fitness = ga.calculate_normalized_fitness(scores)
 
