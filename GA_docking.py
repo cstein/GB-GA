@@ -18,6 +18,7 @@ import filters
 
 from sa import sa_target_score_clipped, neutralize_molecules
 from logp import logp_target_score_clipped
+from descriptors import number_of_rotatable_bonds_target_clipped
 
 
 @dataclass
@@ -39,6 +40,9 @@ class MoleculeOptions:
     molecule_size_standard_deviation: int
     molecule_filters: Union[None, List[Chem.Mol]]
     molecule_filters_database: str
+    nrb_screening: bool
+    nrb_target: int
+    nrb_standard_deviation: int
     sa_screening: bool
     logp_screening: bool
     logp_target: float
@@ -65,6 +69,27 @@ def reweigh_scores_by_logp(population: List[Chem.Mol], scores: List[float], targ
     """
     logp_target_scores = [logp_target_score_clipped(p, target, sigma) for p in population]
     return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
+
+
+def reweigh_scores_by_number_of_rotatable_bonds_target(population: List[Chem.Mol],
+                                                       scores: List[float],
+                                                       target: float,
+                                                       sigma: float) -> List[float]:
+    """ Reweighs docking scores by number of rotatable bonds.
+
+        For some molecules we want a maximum of number of rotatable bonds (typically 5) but
+        we want to keep some molecules with a larger number around for possible mating.
+        The default parameters keeps all molecules with 5 rotatable bonds and roughly 40 %
+        of molecules with 6 rotatable bonds.
+
+    :param population:
+    :param scores:
+    :param target:
+    :param sigma:
+    :return:
+    """
+    number_of_rotatable_target_scores = [number_of_rotatable_bonds_target_clipped(p, target, sigma) for p in population]
+    return [ns * lts for ns, lts in zip(scores, number_of_rotatable_target_scores)]  # rescale scores and force list type
 
 
 class ExpandPath(argparse.Action):
@@ -120,6 +145,9 @@ def setup() -> argparse.Namespace:
     molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="number", type=int, default=molecule_size_standard_deviation, help="Standard deviation of size of molecule. Default: %(default)s.")
     molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
     molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_database", metavar="file", type=str, action=ExpandPath, default="./alert_collection.csv", help="File with filters. Default: %(default)s")
+    molecule_settings.add_argument("--mol-nrb-screening", dest="nrb_screening", default=False, action="store_true", help="Add this option to target number of rotatable bonds.")
+    molecule_settings.add_argument("--mol-nrb-target", dest="nrb_target", metavar="number", type=int, default=5, help="Target number of rotatable bonds. %(default)s.")
+    molecule_settings.add_argument("--mol-nrb-sigma", dest="nrb_sigma", metavar="number", type=int, default=1, help="Standard deviation of accepted number of rotatable bonds. %(default)s.")
     molecule_settings.add_argument("--mol-sa-screening", dest="sa_screening", default=sa_screening, action="store_true", help="Add this option to enable synthetic accesibility screening")
     molecule_settings.add_argument("--mol-logp-screening", dest="logp_screening", default=logp_screening, action="store_true", help="Add this option to enable logP screening")
     molecule_settings.add_argument("--mol-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
@@ -182,6 +210,9 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                         args.molecule_stdev,
                                                         filters.get_molecule_filters(args.molecule_filters, args.molecule_filters_database),
                                                         args.molecule_filters_database,
+                                                        args.nrb_screening,
+                                                        args.nrb_target,
+                                                        args.nrb_sigma,
                                                         args.sa_screening,
                                                         args.logp_screening,
                                                         args.logp_target,
@@ -258,6 +289,10 @@ def print_options(ga_options: GAOptions,
           molecule_options.molecule_size_standard_deviation)
     print('* molecule filters', molecule_options.molecule_filters)
     print('* molecule filters database', molecule_options.molecule_filters_database)
+    print('* number of rotatable bonds screen', molecule_options.nrb_screening)
+    if molecule_options.nrb_screening:
+        print('* number of rotatable bonds target', molecule_options.nrb_target)
+        print('* number of rotatable bonds sigma', molecule_options.nrb_standard_deviation)
     print('* synthetic availability screen', molecule_options.sa_screening)
     print('* logP screening', molecule_options.logp_screening)
     if molecule_options.logp_screening:
@@ -278,7 +313,8 @@ def print_options(ga_options: GAOptions,
 
 def score(pop,
           molecule_options: MoleculeOptions,
-          docking_options: Union[docking.glide.GlideOptions, docking.smina.SminaOptions]) -> Tuple[List[Chem.Mol], List[float]]:
+          docking_options: Union[docking.glide.GlideOptions, docking.smina.SminaOptions]
+          ) -> Tuple[List[Chem.Mol], List[float]]:
     """ Scores the population with an appropriate docking method
 
         The scoring also takes care of synthesizability (SA) and
@@ -291,6 +327,9 @@ def score(pop,
         pop, s = docking.smina_score(pop, docking_options)
     else:
         raise ValueError("How did you end up here?")
+
+    if molecule_options.nrb_screening:
+        s = reweigh_scores_by_number_of_rotatable_bonds_target(pop, s, molecule_options.nrb_target, molecule_options.nrb_standard_deviation)
 
     if molecule_options.sa_screening:
         s = reweigh_scores_by_sa(neutralize_molecules(pop), s)
