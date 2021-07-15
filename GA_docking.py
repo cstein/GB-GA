@@ -1,3 +1,4 @@
+""" Docking """
 import argparse
 from dataclasses import dataclass
 import os
@@ -317,8 +318,9 @@ def score(pop,
           ) -> Tuple[List[Chem.Mol], List[float]]:
     """ Scores the population with an appropriate docking method
 
-        The scoring also takes care of synthesizability (SA) and
-        solvability (logP) scaling of the score.
+        The scoring also takes care of synthesizability (SA),
+        solvability (logP) as well as number of rotatable bonds to
+        scale the score.
 
     """
     if isinstance(docking_options, docking.glide.GlideOptions):
@@ -349,7 +351,7 @@ if __name__ == '__main__':
     np.random.seed(ga_opt.random_seed)
     random.seed(ga_opt.random_seed)
 
-    initial_population = ga.make_initial_population(ga_opt.population_size, ga_opt.input_filename)
+    initial_population = ga.make_initial_population(ga_opt.input_filename, ga_opt.population_size)
     population, scores = score(initial_population, mo_opt, do_opt)
     fitness = ga.calculate_normalized_fitness(scores)
 
