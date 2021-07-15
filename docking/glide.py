@@ -8,6 +8,7 @@ import os
 import stat
 import string
 from typing import List, Tuple
+import zipfile
 
 import numpy as np
 from rdkit import Chem
@@ -66,7 +67,11 @@ def write_shell_executable(shell_settings, filename):
     substitute_file(input_file, filename, shell_settings)
 
 
-def parse_output():
+def write_shell_extract(filename):
+    substitute_file("docking/glide_extract_pose.sh", filename, {})
+
+
+def parse_output() -> Tuple[np.ndarray, np.ndarray]:
     """ Parses the output (dock.csv) from a glide run
 
     :return: scores and status
@@ -122,6 +127,9 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
     shell_exec = s2.pop('GLIDE_SHELL_OUT')
     write_shell_executable(s2, os.path.join(wrk_dir, shell_exec))
 
+    shell_extract = "glide_extract_pose.sh"
+    write_shell_extract(os.path.join(wrk_dir, shell_extract))
+
     # change to work directory
     os.chdir(wrk_dir)
     for mol, filename in zip(molecules, filenames):
@@ -140,7 +148,16 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
         sim_status = None
 
     # copy the current population of poses to parent directory to save it for later
-    shutil.copy("dock_subjob_poses.zip", "../{}.zip".format(options.basename))
+    os.chmod(shell_extract, stat.S_IRWXU)
+    zipf = zipfile.ZipFile("{}.zip".format(options.basename), 'w')
+    i_structure = 1
+    for i, status in enumerate(sim_status, start=1):
+        if status:
+            i_structure += 1
+            shell("./{} {} {}".format(shell_extract, i, i_structure), "EXTRACT")
+            zipf.write(f"{i}.sd")
+    zipf.close()
+    shutil.copy("{}.zip".format(options.basename), "../{}.zip".format(options.basename))
 
     # go back from work directory
     os.chdir("..")
@@ -150,7 +167,8 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
     # remove temporary directory
     if sim_status is not None:
         try:
-            shutil.rmtree(wrk_dir)
+            # shutil.rmtree(wrk_dir)
+            pass
         except OSError:
             # in rare cases, the rmtree function is called before / during the
             # cleanup actions by GLIDE. This raises an OSError because of the

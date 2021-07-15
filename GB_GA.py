@@ -64,15 +64,15 @@ def calculate_normalized_fitness(scores: List[float]) -> List[float]:
     return normalized_fitness
 
 
-def make_mating_pool(population: List[Chem.Mol], fitness: List[float], mating_pool_size: int) -> List[Chem.Mol]:
+def make_mating_pool(population: List[Chem.Mol], scores: List[float], mating_pool_size: int) -> List[Chem.Mol]:
     """ Constructs a mating pool, i.e. list of molecules selected to generate offspring
 
         :param population: the population used to construct the mating pool
-        :param fitness: the fitness of each molecule in the population
+        :param scores: the fitness of each molecule in the population
         :param mating_pool_size: the size of the mating pool
         :returns: list of molecules to use as a starting point for offspring generation
     """
-    assert len(population) == len(fitness)
+    fitness = calculate_normalized_fitness(scores)
     mating_pool = []
     for i in range(mating_pool_size):
         mating_pool.append(np.random.choice(population, p=fitness))
