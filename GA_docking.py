@@ -166,6 +166,7 @@ def setup() -> argparse.Namespace:
     glide_settings.add_argument("--glide-precision", metavar="precision", type=str, default="SP", choices=("HTVS", "SP", "XP"), help="Precision to use. Choices are: %(choices)s. Default: %(default)s.")
     glide_settings.add_argument("--glide-method", metavar="method", type=str, default="rigid", choices=("confgen", "rigid"), help="Docking method to use. Confgen is automatic generation of conformers. Rigid uses 3D structure provided by RDKit. Choices are %(choices)s. Default: %(default)s.")
     glide_settings.add_argument("--glide-expanded-sampling", default=glide_expanded_sampling, action="store_true", help="Enables expanded sampling when docking with Glide.")
+    glide_settings.add_argument("--glide-save-poses", default=False, action="store_true", help="Saves binding poses to sd files.")
 
     doc_string = """
     Options for using SMINA for docking with GB-GA.
@@ -254,7 +255,8 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                      glide_method=args.glide_method,
                                                      glide_precision=args.glide_precision,
                                                      glide_grid=args.glide_grid,
-                                                     glide_expanded_sampling=args.glide_expanded_sampling)
+                                                     glide_expanded_sampling=args.glide_expanded_sampling,
+                                                     glide_save_poses=args.glide_save_poses)
 
     if args.smina_grid is not None:
         if not os.path.exists(args.smina_grid):

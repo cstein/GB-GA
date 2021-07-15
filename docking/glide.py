@@ -38,6 +38,7 @@ class GlideOptions(DockingOptions):
     glide_method: str = ""
     glide_precision: str = ""
     glide_expanded_sampling: bool = False
+    glide_save_poses: bool = False
 
 
 def write_glide_settings(glide_settings, filename):
@@ -147,17 +148,23 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
         sim_scores = np.array([0.0 for i in population])
         sim_status = None
 
+    # TODO: Fix pose extraction
+    #       We use the dock_pv.mae file which has _ALREADY_ sorted the binding poses
+    #       so the numbering is 100 % off.
+    # TODO: Fix speed of the following
+    #       It takes forever to do this step
     # copy the current population of poses to parent directory to save it for later
-    os.chmod(shell_extract, stat.S_IRWXU)
-    zipf = zipfile.ZipFile("{}.zip".format(options.basename), 'w')
-    i_structure = 1
-    for i, status in enumerate(sim_status, start=1):
-        if status:
-            i_structure += 1
-            shell("./{} {} {}".format(shell_extract, i, i_structure), "EXTRACT")
-            zipf.write(f"{i}.sd")
-    zipf.close()
-    shutil.copy("{}.zip".format(options.basename), "../{}.zip".format(options.basename))
+    if options.glide_save_poses:
+        os.chmod(shell_extract, stat.S_IRWXU)
+        zipf = zipfile.ZipFile("{}.zip".format(options.basename), 'w')
+        i_structure = 1
+        for i, status in enumerate(sim_status, start=1):
+            if status:
+                i_structure += 1
+                shell("./{} {} {}".format(shell_extract, i, i_structure), "EXTRACT")
+                zipf.write(f"{i}.sd")
+        zipf.close()
+        shutil.copy("{}.zip".format(options.basename), "../{}.zip".format(options.basename))
 
     # go back from work directory
     os.chdir("..")
