@@ -2,6 +2,7 @@
 Docking through Glide from Schrodinger
 """
 import csv
+from dataclasses import dataclass
 import shutil
 import os
 import stat
@@ -11,22 +12,31 @@ from typing import List, Tuple
 import numpy as np
 from rdkit import Chem
 
-from .util import choices, molecules_to_structure, molecule_to_sdf, shell, substitute_file
+from .util import choices, molecules_to_structure, molecule_to_sdf, shell, substitute_file, DockingOptions
 
 GLIDE_SETTINGS = {
-  'COMPRESS_POSES': False,
-  'GRIDFILE': "",
-  'LIGANDFILES': [],
-  'WRITE_CSV': True,
-  'POSTDOCK': True,
-  'DOCKING_METHOD': "rigid",
-  'PRECISION': "SP"
+    'COMPRESS_POSES': False,
+    'GRIDFILE': "",
+    'LIGANDFILES': [],
+    'WRITE_CSV': True,
+    'POSTDOCK': True,
+    'DOCKING_METHOD': "rigid",
+    'PRECISION': "SP",
+    'EXPANDED_SAMPLING': False
 }
 
 SHELL_SETTINGS = {
     'SCHRODPATH': "",
     'GLIDE_IN': ""
 }
+
+
+@dataclass
+class GlideOptions(DockingOptions):
+    glide_grid: str = ""
+    glide_method: str = ""
+    glide_precision: str = ""
+    glide_expanded_sampling: bool = False
 
 
 def write_glide_settings(glide_settings, filename):
@@ -83,37 +93,25 @@ def parse_output():
     return np.array(scores), np.array(status)
 
 
-def glide_score(population: List[Chem.Mol], basename: str, gridfile: str, method: str, precision: str,
-                num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[float]]:
-    """ Scores a population of RDKit molecules with the Glide program from the Schrodinger package
-
-    :param population:
-    :param basename: Basename to use for output purposes
-    :param gridfile: The gridfile to dock into (a .zip file)
-    :param method: The docking method to use (confgen, rigid, mininplace or inplace)
-    :param precision: Docking precision (HTVS, SP or XP)
-    :param int num_conformations: Number of conformations to generate through RDKit if chosen
-    :param int num_cpus: number of CPUs to use pr. docking job
-    :return: lists of molecules and scores
-    """
-    molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
+def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List[Chem.Mol], List[float]]:
+    molecules, names, population = molecules_to_structure(population, options.num_conformations, options.num_cpus)
     indices = [i for i, m in enumerate(molecules)]
     filenames = ["{}.sd".format(names[i]) for i in indices]
 
-    wrk_dir = basename + "_" + ''.join(choices(string.ascii_uppercase + string.digits, 6))
+    wrk_dir = options.basename + "_" + ''.join(choices(string.ascii_uppercase + string.digits, 6))
     os.mkdir(wrk_dir)
 
     # write the necessary glide-specific files needed for docking
     s = dict(GLIDE_SETTINGS)
     s['LIGANDFILES'] = filenames[:]
-    s['GRIDFILE'] = gridfile
-    s['DOCKING_METHOD'] = method
-    s['PRECISION'] = precision
+    s['GRIDFILE'] = options.glide_grid
+    s['DOCKING_METHOD'] = options.glide_method
+    s['PRECISION'] = options.glide_precision
     write_glide_settings(s, os.path.join(wrk_dir, "dock.input"))
 
     s2 = dict(SHELL_SETTINGS)
     s2['GLIDE_IN'] = "dock.input"
-    s2['NCPUS'] = "{}".format(num_cpus)
+    s2['NCPUS'] = "{}".format(options.num_cpus)
     s2['GLIDE_SHELL_IN'] = "docking/glide_dock.in.sh"
     s2['GLIDE_SHELL_OUT'] = "dock_test.sh"
     schrodinger_env = "SCHRODINGER"
@@ -142,7 +140,7 @@ def glide_score(population: List[Chem.Mol], basename: str, gridfile: str, method
         sim_status = None
 
     # copy the current population of poses to parent directory to save it for later
-    shutil.copy("dock_subjob_poses.zip", "../{}.zip".format(basename))
+    shutil.copy("dock_subjob_poses.zip", "../{}.zip".format(options.basename))
 
     # go back from work directory
     os.chdir("..")

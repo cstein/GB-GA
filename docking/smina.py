@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import multiprocessing as mp
 import os
 import shutil
@@ -6,7 +7,7 @@ import sys
 from typing import List, Tuple
 import zipfile
 
-from .util import molecules_to_structure, molecule_to_sdf, shell, substitute_file
+from .util import molecules_to_structure, molecule_to_sdf, shell, substitute_file, DockingOptions
 
 import numpy as np
 
@@ -26,6 +27,13 @@ SMINA_SETTINGS = {
     'NUMMODES': 1,
     'BOXSIZE': 15
 }
+
+
+@dataclass
+class SminaOptions(DockingOptions):
+    box_size: float = 15
+    receptor: str = ""
+    center: np.ndarray = np.array([0.0, 0.0, 0.0])
 
 
 def write_shell_executable(shell_settings, filename: str) -> None:
@@ -115,31 +123,18 @@ def dock(directory: str):
     os.chdir("..")
 
 
-def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor: str, center_of_docking: np.ndarray,
-                box_size: float, num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[float]]:
-    """ Scores a population of RDKit molecules with the Smina program
-
-    :param population:
-    :param basename: Basename to use for output purposes
-    :param receptor:
-    :param center_of_docking:
-    :param box_size:
-    :param num_conformations: Number of conformations to generate through RDKit if chosen
-    :param num_cpus:
-    :return:
-    """
+def smina_score(population: List[Chem.Mol], options: SminaOptions):
     scores: List[float] = list()
     stati: List[bool] = list()
 
-    # write files to folders
-    # we can do this in serial
+    # store options
     directories: List[str] = list()
     settings = dict(SMINA_SETTINGS)
-    settings['BASENAME'] = basename
-    settings['NCPUS'] = num_cpus
-    settings['RECEPTOR'] = receptor
-    settings['CX'], settings['CY'], settings['CZ'] = center_of_docking
-    settings['BOXSIZE'] = box_size
+    settings['BASENAME'] = options.basename
+    settings['NCPUS'] = 1  # we do not currently parallelize SMINA itself
+    settings['RECEPTOR'] = options.receptor
+    settings['CX'], settings['CY'], settings['CZ'] = options.center
+    settings['BOXSIZE'] = options.box_size
     smina_env = "SMINA"
     if smina_env in os.environ:
         settings['SMINA'] = os.environ.get(smina_env, "")
@@ -149,10 +144,12 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor: str, 
     if sys.platform == "darwin":
         settings['EXE'] = "smina.osx"
 
-    molecules, names, population = molecules_to_structure(population, num_conformations, num_cpus)
+    # Generate 3D structures of molecules
+    molecules, names, population = molecules_to_structure(population, options.num_conformations, options.num_cpus)
 
+    # write files to folders
     for name, mol in zip(names, molecules):
-        wrk_dir = "{}_{}".format(basename, name)
+        wrk_dir = "{}_{}".format(options.basename, name)
         os.mkdir(wrk_dir)
         os.chdir(wrk_dir)
         mol_no_hydrogen = remove_hydrogens(mol)
@@ -162,25 +159,25 @@ def smina_score(population: List[rdkit.Chem.Mol], basename: str, receptor: str, 
         os.chdir("..")
         directories.append(wrk_dir)
 
-    # this we can do in parallel.
+    # dock everything in parallel.
     try:
-        with mp.Pool(num_cpus) as pool:
+        with mp.Pool(options.num_cpus) as pool:
             generated_molecules = pool.map(dock, directories)
     except OSError:
         generated_molecules = [dock(directory) for directory in directories]
 
-    # this we can do in serial
+    # parse the output
     scores_from_smina: List[float]
     for directory in directories:
         os.chdir(directory)
         # the output can (potentially) parse many numbers. We need the best.
-        scores_from_smina, status_from_smina = parse_output(basename)
+        scores_from_smina, status_from_smina = parse_output(options.basename)
         stati.append(status_from_smina[0])
         scores.append(scores_from_smina[0])
         os.chdir("..")
 
     # traverse folders and add content to .zip file
-    zipf = zipfile.ZipFile("{}.zip".format(basename), 'w')
+    zipf = zipfile.ZipFile("{}.zip".format(options.basename), 'w')
     for directory in directories:
         for root, d, files in os.walk(directory):
             for f in files:

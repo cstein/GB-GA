@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import multiprocessing as mp
 import random
 import string
@@ -8,6 +9,18 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 
 from typing import List, Tuple, Union
+
+
+@dataclass
+class DockingOptions:
+    """ Base class for docking options
+
+        The methods derive specific classes based on this
+        baseclass
+    """
+    basename: str = ""
+    num_cpus: int = 1
+    num_conformations: int = 1
 
 
 def choices(sin, nin=6):
