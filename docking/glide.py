@@ -67,8 +67,8 @@ def write_shell_executable(shell_settings, filename):
     substitute_file(input_file, filename, shell_settings)
 
 
-def write_shell_extract(filename):
-    substitute_file("docking/glide_extract_pose.sh", filename, {})
+def write_shell_extract(shell_settings, filename):
+    substitute_file("docking/glide_extract_pose.in.sh", filename, shell_settings)
 
 
 def parse_output() -> Tuple[np.ndarray, np.ndarray]:
@@ -128,7 +128,7 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
     write_shell_executable(s2, os.path.join(wrk_dir, shell_exec))
 
     shell_extract = "glide_extract_pose.sh"
-    write_shell_extract(os.path.join(wrk_dir, shell_extract))
+    write_shell_extract(s2, os.path.join(wrk_dir, shell_extract))
 
     # change to work directory
     os.chdir(wrk_dir)
