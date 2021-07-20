@@ -31,18 +31,18 @@ def append_atom() -> str:
     choices = [['single', ['C', 'N', 'O', 'F', 'S', 'Cl', 'Br'], 7 * [1.0 / 7.0]],
                ['double', ['C', 'N', 'O'], 3 * [1.0 / 3.0]],
                ['triple', ['C', 'N'], 2 * [1.0 / 2.0]]]
-    p_BO = [0.60, 0.35, 0.05]
+    bond_order_probabilities = [0.60, 0.35, 0.05]
 
-    index = np.random.choice(list(range(3)), p=p_BO)
+    index = np.random.choice(list(range(3)), p=bond_order_probabilities)
 
-    BO, atom_list, p = choices[index]
+    bond_order, atom_list, p = choices[index]
     new_atom = np.random.choice(atom_list, p=p)
 
-    if BO == 'single':
+    if bond_order == 'single':
         rxn_smarts = '[*;!H0:1]>>[*:1]X'.replace('X', '-' + new_atom)
-    if BO == 'double':
+    elif bond_order == 'double':
         rxn_smarts = '[*;!H0;!H1:1]>>[*:1]X'.replace('X', '=' + new_atom)
-    if BO == 'triple':
+    else:  # elif BO == 'triple':
         rxn_smarts = '[*;H3:1]>>[*:1]X'.replace('X', '#' + new_atom)
 
     return rxn_smarts
@@ -53,18 +53,18 @@ def insert_atom() -> str:
     choices = [['single', ['C', 'N', 'O', 'S'], 4 * [1.0 / 4.0]],
                ['double', ['C', 'N'], 2 * [1.0 / 2.0]],
                ['triple', ['C'], [1.0]]]
-    p_BO = [0.60, 0.35, 0.05]
+    bond_order_probabilities = [0.60, 0.35, 0.05]
 
-    index = np.random.choice(list(range(3)), p=p_BO)
+    index = np.random.choice(list(range(3)), p=bond_order_probabilities)
 
-    BO, atom_list, p = choices[index]
+    bond_order, atom_list, p = choices[index]
     new_atom = np.random.choice(atom_list, p=p)
 
-    if BO == 'single':
+    if bond_order == 'single':
         rxn_smarts = '[*:1]~[*:2]>>[*:1]X[*:2]'.replace('X', new_atom)
-    if BO == 'double':
+    if bond_order == 'double':
         rxn_smarts = '[*;!H0:1]~[*:2]>>[*:1]=X-[*:2]'.replace('X', new_atom)
-    if BO == 'triple':
+    else:  # elif BO == 'triple':
         rxn_smarts = '[*;!R;!H1;!H0:1]~[*:2]>>[*:1]#X-[*:2]'.replace('X', new_atom)
 
     return rxn_smarts
@@ -74,9 +74,9 @@ def change_bond_order() -> str:
     """ Returns a SMARTS string to change a bond order """
     choices = ['[*:1]!-[*:2]>>[*:1]-[*:2]', '[*;!H0:1]-[*;!H0:2]>>[*:1]=[*:2]',
                '[*:1]#[*:2]>>[*:1]=[*:2]', '[*;!R;!H1;!H0:1]~[*:2]>>[*:1]#[*:2]']
-    p = [0.45, 0.45, 0.05, 0.05]
+    probabilities = [0.45, 0.45, 0.05, 0.05]
 
-    return np.random.choice(choices, p=p)
+    return np.random.choice(choices, p=probabilities)
 
 
 def delete_cyclic_bond() -> str:
@@ -90,22 +90,22 @@ def add_ring() -> str:
                '[*;!r;!H0:1]~[*!r:2]~[*!r:3]~[*;!r;!H0:4]>>[*:1]1~[*:2]~[*:3]~[*:4]1',
                '[*;!r;!H0:1]~[*!r:2]~[*:3]~[*:4]~[*;!r;!H0:5]>>[*:1]1~[*:2]~[*:3]~[*:4]~[*:5]1',
                '[*;!r;!H0:1]~[*!r:2]~[*:3]~[*:4]~[*!r:5]~[*;!r;!H0:6]>>[*:1]1~[*:2]~[*:3]~[*:4]~[*:5]~[*:6]1']
-    p = [0.05, 0.05, 0.45, 0.45]
+    probabilities = [0.05, 0.05, 0.45, 0.45]
 
-    return np.random.choice(choices, p=p)
+    return np.random.choice(choices, p=probabilities)
 
 
 def change_atom(mol: Chem.Mol) -> str:
     """ Returns a SMARTS string to change an atom in a molecule to a different one """
     choices = ['#6', '#7', '#8', '#9', '#16', '#17', '#35']
-    p = [0.15, 0.15, 0.14, 0.14, 0.14, 0.14, 0.14]
+    probabilities = [0.15, 0.15, 0.14, 0.14, 0.14, 0.14, 0.14]
 
-    first = np.random.choice(choices, p=p)
+    first = np.random.choice(choices, p=probabilities)
     while not mol.HasSubstructMatch(Chem.MolFromSmarts('[' + first + ']')):
-        first = np.random.choice(choices, p=p)
-    second = np.random.choice(choices, p=p)
+        first = np.random.choice(choices, p=probabilities)
+    second = np.random.choice(choices, p=probabilities)
     while second == first:
-        second = np.random.choice(choices, p=p)
+        second = np.random.choice(choices, p=probabilities)
 
     return '[X:1]>>[Y:1]'.replace('X', first).replace('Y', second)
 
@@ -122,7 +122,7 @@ def mutate(mol: Chem.Mol, mutation_rate: float, molecule_filter: Union[None, Lis
         return mol
 
     Chem.Kekulize(mol, clearAromaticFlags=True)
-    p = [0.15, 0.14, 0.14, 0.14, 0.14, 0.14, 0.15]
+    probabilities = [0.15, 0.14, 0.14, 0.14, 0.14, 0.14, 0.15]
     for i in range(10):
         rxn_smarts_list = 7 * ['']
         rxn_smarts_list[0] = insert_atom()
@@ -132,7 +132,7 @@ def mutate(mol: Chem.Mol, mutation_rate: float, molecule_filter: Union[None, Lis
         rxn_smarts_list[4] = delete_atom()
         rxn_smarts_list[5] = change_atom(mol)
         rxn_smarts_list[6] = append_atom()
-        rxn_smarts = np.random.choice(rxn_smarts_list, p=p)
+        rxn_smarts = np.random.choice(rxn_smarts_list, p=probabilities)
 
         rxn = AllChem.ReactionFromSmarts(rxn_smarts)
 
