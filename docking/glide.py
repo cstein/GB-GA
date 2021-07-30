@@ -146,7 +146,7 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
     except IOError as e:
         print("GLIDE Warning: Error parsing output in {} with error: {}".format(wrk_dir, e.strerror))
         sim_scores = np.array([0.0 for i in population])
-        sim_status = None
+        sim_status = np.empty_like(sim_scores)
 
     # TODO: Fix pose extraction
     #       We use the dock_pv.mae file which has _ALREADY_ sorted the binding poses

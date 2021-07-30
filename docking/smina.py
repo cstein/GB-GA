@@ -153,7 +153,7 @@ def smina_score(population: List[Chem.Mol], options: SminaOptions):
         os.mkdir(wrk_dir)
         os.chdir(wrk_dir)
         mol_no_hydrogen = remove_hydrogens(mol)
-        molecule_to_sdf(mol_no_hydrogen, settings['LIGAND'])
+        molecule_to_sdf(mol_no_hydrogen, str(settings['LIGAND']))
         write_shell_executable(settings, "smina_dock.sh")
         os.chmod("smina_dock.sh", stat.S_IRWXU)
         os.chdir("..")
