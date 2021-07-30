@@ -1,6 +1,5 @@
 """ Docking """
 import argparse
-from dataclasses import dataclass
 import os
 import os.path
 import pickle
@@ -12,71 +11,43 @@ import numpy as np
 from rdkit import rdBase
 from rdkit import Chem
 
-import crossover as co
-import mutate as mu
-import GB_GA as ga
 import docking
 import filters
 
 from sa import sa_target_score_clipped, neutralize_molecules
 from logp import logp_target_score_clipped
 from descriptors import number_of_rotatable_bonds_target_clipped
+from ga import GAOptions
+from ga import make_initial_population, make_mating_pool, reproduce, sanitize
+from molecule import MoleculeOptions
 
 
-@dataclass
-class GAOptions:
-    input_filename: str
-    basename: str
-    num_generations: int
-    population_size: int
-    mating_pool_size: int
-    mutation_rate: float
-    max_score: float
-    random_seed: int
-    prune_population: bool
-
-
-@dataclass
-class MoleculeOptions:
-    molecule_size: int
-    molecule_size_standard_deviation: int
-    molecule_filters: Union[None, List[Chem.Mol]]
-    molecule_filters_database: str
-    nrb_screening: bool
-    nrb_target: int
-    nrb_standard_deviation: int
-    sa_screening: bool
-    logp_screening: bool
-    logp_target: float
-    logp_standard_deviation: float
-
-
-def reweigh_scores_by_sa(population: List[Chem.Mol], scores: List[float]) -> List[float]:
+def reweigh_scores_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List[float]:
     """ Reweighs scores with synthetic accessibility score
 
-        :param population: list of RDKit molecules to be re-weighted
+        :param molecules: list of RDKit molecules to be re-weighted
         :param scores: list of docking scores
         :return: list of re-weighted docking scores
     """
-    sa_scores = [sa_target_score_clipped(p) for p in population]
+    sa_scores = [sa_target_score_clipped(m) for m in molecules]
     return [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores and force list type
 
 
-def reweigh_scores_by_logp(population: List[Chem.Mol],
+def reweigh_scores_by_logp(molecules: List[Chem.Mol],
                            scores: List[float],
                            molecule_options: MoleculeOptions) -> List[float]:
     """ Reweighs docking scores with logp
 
-        :param population: list of RDKit molecules to be re-weighted
+        :param molecules: list of RDKit molecules to be re-weighted
         :param scores: list of docking scores
         :param molecule_options:
         :return: list of re-weighted docking scores
     """
-    logp_target_scores = [logp_target_score_clipped(p, molecule_options.logp_target, molecule_options.logp_standard_deviation) for p in population]
+    logp_target_scores = [logp_target_score_clipped(m, molecule_options.logp_target, molecule_options.logp_standard_deviation) for m in molecules]
     return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
 
 
-def reweigh_scores_by_number_of_rotatable_bonds_target(population: List[Chem.Mol],
+def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol],
                                                        scores: List[float],
                                                        molecule_options: MoleculeOptions) -> List[float]:
     """ Reweighs docking scores by number of rotatable bonds.
@@ -86,12 +57,12 @@ def reweigh_scores_by_number_of_rotatable_bonds_target(population: List[Chem.Mol
         The default parameters keeps all molecules with 5 rotatable bonds and roughly 40 %
         of molecules with 6 rotatable bonds.
 
-        :param population:
+        :param molecules:
         :param scores:
         :param molecule_options:
         :return:
     """
-    number_of_rotatable_target_scores = [number_of_rotatable_bonds_target_clipped(p, molecule_options.nrb_target, molecule_options.nrb_standard_deviation) for p in population]
+    number_of_rotatable_target_scores = [number_of_rotatable_bonds_target_clipped(m, molecule_options.nrb_target, molecule_options.nrb_standard_deviation) for m in molecules]
     return [ns * lts for ns, lts in zip(scores, number_of_rotatable_target_scores)]  # rescale scores and force list type
 
 
@@ -190,8 +161,6 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                Union[docking.glide.GlideOptions,
                                                      docking.smina.SminaOptions]
                                                ]:
-    co.average_size = args.molecule_size
-    co.size_stdev = args.molecule_stdev
 
     # now set variables according to input
     random_seed: int
@@ -258,7 +227,9 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                      glide_expanded_sampling=args.glide_expanded_sampling,
                                                      glide_save_poses=args.glide_save_poses)
 
-    if args.smina_grid is not None:
+    # elif args.smina_grid is not None:
+    else:
+        assert args.smina_grid is not None
         if not os.path.exists(args.smina_grid):
             raise ValueError("The SMINA grid file '{}' could not be found.".format(args.smina_grid))
 
@@ -346,111 +317,105 @@ def score(pop,
     return pop, s
 
 
-def molecule_substruct_matches(mol: Chem.Mol, matches: Union[None, List[Chem.Mol]]) -> bool:
-    if matches is None:
-        return True
-
-    for match in matches:
-        if mol.HasSubstructMatch(match):
-            return True
-    else:
-        return False
-
-
-def molecule_substruct_matches_count(mol: Chem.Mol, matches: Union[None, List[Chem.Mol]], count: int) -> bool:
-    if matches is None:
-        return True
-
-    n_matches = [len(mol.GetSubstructMatches(match)) for match in matches]
-    return sum(n_matches) == count
-
-
-def make_initial_population(filename: str,
-                            population_size: int,
-                            matches: Union[None, List[Chem.Mol]],
-                            match_count: int) -> List[Chem.Mol]:
-    """ Constructs an initial population from a file with a certain size
-
-        :param filename: the file to read SMILES from
-        :param population_size: the number of molecules in the population
-        :param matches:
-        :param match_count:
-        :returns: list of RDKit molecules
-    """
-    mol_list = ga.read_smiles_file(filename)
-    population: List[Chem.Mol] = []
-    while len(population) < population_size:
-        mol: Chem.Mol = random.choice(mol_list)
-        if molecule_substruct_matches_count(mol, matches, match_count):
-            population.append(mol)
-
-    return population
+# def molecule_substruct_matches(mol: Chem.Mol, matches: Union[None, List[Chem.Mol]]) -> bool:
+#     if matches is None:
+#         return True
+#
+#     for match in matches:
+#         if mol.HasSubstructMatch(match):
+#             return True
+#     else:
+#         return False
+#
+#
+# def molecule_substruct_matches_count(mol: Chem.Mol, matches: Union[None, List[Chem.Mol]], count: int) -> bool:
+#     if matches is None:
+#         return True
+#
+#     n_matches = [len(mol.GetSubstructMatches(match)) for match in matches]
+#     return sum(n_matches) == count
 
 
-def make_mating_pool(population: List[Chem.Mol],
-                     scores: List[float],
-                     mating_pool_size: int,
-                     matches: Union[None, List[Chem.Mol]],
-                     match_count: int) -> List[Chem.Mol]:
-    """ Constructs a mating pool, i.e. list of molecules selected to generate offspring
-
-        :param population: the population used to construct the mating pool
-        :param scores: the fitness of each molecule in the population
-        :param mating_pool_size: the size of the mating pool
-        :param matches: any molecules which substructure should be in the
-        :param match_count:
-        :returns: list of molecules to use as a starting point for offspring generation
-    """
-
-    # modify scores based on whether we have a match or not
-    mod_scores = scores[:]
-    for i, mol in enumerate(population):
-        if not molecule_substruct_matches_count(mol, matches, match_count):
-            mod_scores[i] = 0.0
-    if sum(mod_scores) == 0:
-        raise ValueError("No molecules")
-
-    fitness = ga.calculate_normalized_fitness(mod_scores)
-
-    mating_pool = []
-    for i in range(mating_pool_size):
-        mating_pool.append(np.random.choice(population, p=fitness))
-
-    return mating_pool
+# def make_initial_population(options: GAOptions,
+#                             matches: Union[None, List[Chem.Mol]],
+#                             match_count: int) -> List[Chem.Mol]:
+#     """ Constructs an initial population from a file with a certain size
+#
+#         :param options: GA options
+#         :param matches:
+#         :param match_count:
+#         :returns: list of RDKit molecules
+#     """
+#     mol_list = read_smiles_file(options.input_filename)
+#     population: List[Chem.Mol] = []
+#     while len(population) < options.population_size:
+#         mol: Chem.Mol = random.choice(mol_list)
+#         if molecule_substruct_matches_count(mol, matches, match_count):
+#             population.append(mol)
+#
+#     return population
 
 
-def reproduce(mating_pool: List[Chem.Mol],
-              population_size: int,
-              mutation_rate: float,
-              molecule_filter: Union[None, List[Chem.Mol]],
-              matches: Union[None, List[Chem.Mol]],
-              match_count: int) -> List[Chem.Mol]:
-    """ Creates a new population based on the mating_pool
+# def make_mating_pool(population: List[Chem.Mol],
+#                      scores: List[float],
+#                      mating_pool_size: int,
+#                      matches: Union[None, List[Chem.Mol]],
+#                      match_count: int) -> List[Chem.Mol]:
+#     """ Constructs a mating pool, i.e. list of molecules selected to generate offspring
+#
+#         :param population: the population used to construct the mating pool
+#         :param scores: the fitness of each molecule in the population
+#         :param mating_pool_size: the size of the mating pool
+#         :param matches: any molecules which substructure should be in the
+#         :param match_count:
+#         :returns: list of molecules to use as a starting point for offspring generation
+#     """
+#
+#     # modify scores based on whether we have a match or not
+#     mod_scores = scores[:]
+#     for i, mol in enumerate(population):
+#         if not molecule_substruct_matches_count(mol, matches, match_count):
+#             mod_scores[i] = 0.0
+#     if sum(mod_scores) == 0:
+#         raise ValueError("No molecules")
+#
+#     fitness = calculate_normalized_fitness(mod_scores)
+#
+#     return [np.random.choice(population, p=fitness) for i in range(mating_pool_size)]
 
-        :param mating_pool: list of molecules to mate from
-        :param population_size: size of the population
-        :param mutation_rate: the rate of mutation for an offspring
-        :param molecule_filter: any filters that should be applied
-        :param matches:
-        :returns: a list of molecules that are offspring of the mating_pool
-    """
-    new_population: List[Chem.Mol] = []
-    while len(new_population) < population_size:
-        parent_a = random.choice(mating_pool)
-        parent_b = random.choice(mating_pool)
-        new_child = co.crossover(parent_a, parent_b, molecule_filter)
-        if new_child is not None:
-            mutated_child = mu.mutate(new_child, mutation_rate, molecule_filter)
-            if mutated_child is not None:
-                if molecule_substruct_matches_count(mutated_child, matches, match_count):
-                    new_population.append(mutated_child)
 
-    return new_population
+# def reproduce(mating_pool: List[Chem.Mol],
+#               population_size: int,
+#               mutation_rate: float,
+#               molecule_options: MoleculeOptions,
+#               matches: Union[None, List[Chem.Mol]],
+#               match_count: int) -> List[Chem.Mol]:
+#     """ Creates a new population based on the mating_pool
+#
+#         :param mating_pool: list of molecules to mate from
+#         :param population_size: size of the population
+#         :param mutation_rate: the rate of mutation for an offspring
+#         :param molecule_filter: any filters that should be applied
+#         :param matches:
+#         :returns: a list of molecules that are offspring of the mating_pool
+#     """
+#     new_population: List[Chem.Mol] = []
+#     while len(new_population) < population_size:
+#         parent_a = random.choice(mating_pool)
+#         parent_b = random.choice(mating_pool)
+#         new_child = crossover(parent_a, parent_b, molecule_options)
+#         if new_child is not None:
+#             mutated_child = mutate(new_child, mutation_rate, molecule_options)
+#             if mutated_child is not None:
+#                 if molecule_substruct_matches_count(mutated_child, matches, match_count):
+#                     new_population.append(mutated_child)
+#
+#     return new_population
 
 
 if __name__ == '__main__':
-    matches = [Chem.MolFromSmarts(s) for s in ["[N;H2;X3][CX4]", "[N;H3;X4+][CX4]"]]
-    count = 1
+    # matches = [Chem.MolFromSmarts(s) for s in ["[N;H2;X3][CX4]", "[N;H3;X4+][CX4]"]]
+    # count = 1
 
     arguments_from_input = setup()
     ga_opt, mo_opt, do_opt = options(arguments_from_input)
@@ -460,17 +425,17 @@ if __name__ == '__main__':
     np.random.seed(ga_opt.random_seed)
     random.seed(ga_opt.random_seed)
 
-    initial_population = make_initial_population(ga_opt.input_filename, ga_opt.population_size, matches, count)
+    initial_population = make_initial_population(ga_opt)
     population, scores = score(initial_population, mo_opt, do_opt)
 
     for generation in range(ga_opt.num_generations):
         t1_gen = time.time()
 
-        mating_pool = make_mating_pool(population, scores, ga_opt.mating_pool_size, matches, count)
-        initial_population = reproduce(mating_pool, ga_opt.population_size, ga_opt.mutation_rate, mo_opt.molecule_filters, matches, count)
+        mating_pool = make_mating_pool(population, scores, ga_opt)
+        initial_population = reproduce(mating_pool, ga_opt, mo_opt)
 
         new_population, new_scores = score(initial_population, mo_opt, do_opt)
-        population, scores = ga.sanitize(population+new_population, scores+new_scores, ga_opt.population_size, ga_opt.prune_population)
+        population, scores = sanitize(population+new_population, scores+new_scores, ga_opt)
 
         t2_gen = time.time()
         print("  >> Generation {0:3d} finished in {1:.1f} min <<".format(generation+1, (t2_gen-t1_gen)/60.0))
@@ -483,6 +448,8 @@ if __name__ == '__main__':
 
     t1 = time.time()
     print("")
-    print("max score = {0:.2f}, mean = {1:.2f} +/- {2:.2f}".format(max(scores), np.mean(scores), np.std(scores)))
+    print("max score = {0:.2f}, mean = {1:.2f} +/- {2:.2f}".format(max(scores),
+                                                                   float(np.mean(scores)),
+                                                                   float(np.std(scores))))
     print("molecule: ", smiles[0])
     print("time = {0:.2f} minutes".format((t1-t0)/60.0))
