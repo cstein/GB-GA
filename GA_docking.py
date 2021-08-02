@@ -102,7 +102,7 @@ def setup() -> argparse.Namespace:
     ga_settings = ap.add_argument_group("Genetic Algorithm Settings", doc_string)
     ga_settings.add_argument("--basename", metavar="name", type=str, default=basename, help="Basename used for output and iterations to distinguish from other calculations.")
     ga_settings.add_argument("-g", "--numgen", metavar="number", type=int, default=num_generations, help="Number of generations. Default: %(default)s.")
-    ga_settings.add_argument("-p", "--popsize", metavar="number", type=int, default=population_size, help="Population size per generation. Default: %(default)s.")
+    ga_settings.add_argument("-p", "--popsize", dest="population_size", metavar="number", type=int, default=population_size, help="Population size per generation. Default: %(default)s.")
     ga_settings.add_argument("-m", "--matsize", metavar="number", type=int, default=mating_pool_size, help="Mating pool size. Default: %(default)s.")
     ga_settings.add_argument("--mutation-rate", metavar="number", type=float, default=mutation_rate, help="Mutation rate. Default: %(default)s.")
     ga_settings.add_argument("--ncpu", metavar="number", type=int, default=num_cpus, help="number of CPUs to use. Default: %(default)s.")
@@ -161,7 +161,11 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                Union[docking.glide.GlideOptions,
                                                      docking.smina.SminaOptions]
                                                ]:
+    """ Sets options based on input
 
+        :param args: the input from command line
+        :returns: a tuple of options
+    """
     # now set variables according to input
     random_seed: int
     if args.randint > 0:
@@ -172,7 +176,7 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
     ga_options: GAOptions = GAOptions(args.smilesfile,
                                       args.basename,
                                       args.numgen,
-                                      args.popsize,
+                                      args.population_size,
                                       args.matsize,
                                       args.mutation_rate,
                                       args.maxscore,
@@ -205,6 +209,7 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
         print("Both docking methods (Glide and SMINA) are activated.")
         raise ValueError("Both docking methods specified. Aborting.")
 
+    # We start with Glide
     if args.glide_grid is not None:
 
         if not os.path.exists(args.glide_grid):
@@ -228,6 +233,7 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                      glide_save_poses=args.glide_save_poses)
 
     # elif args.smina_grid is not None:
+    # otherwise it must be SMINA
     else:
         assert args.smina_grid is not None
         if not os.path.exists(args.smina_grid):
@@ -249,7 +255,15 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
 def print_options(ga_options: GAOptions,
                   molecule_options: MoleculeOptions,
                   docking_options: Union[docking.glide.GlideOptions,
-                                         docking.smina.SminaOptions]) -> None:
+                                         docking.smina.SminaOptions]
+                  ) -> None:
+    """ Prints all options related to docking with GA
+
+        :param ga_options: a GAOptions object
+        :param molecule_options: a MoleculeOptions object
+        :param docking_options: either a GlideOptions or SminaOptions object
+        :returns: a tuple of RDKit molecules and corresponding energies
+    """
     print('* RDKit version', rdBase.rdkitVersion)
     print('* population_size', ga_options.population_size)
     print('* mating_pool_size', ga_options.mating_pool_size)
@@ -287,7 +301,7 @@ def print_options(ga_options: GAOptions,
     print('run,score,smiles,generations,prune,seed')
 
 
-def score(pop,
+def score(pop: List[Chem.Mol],
           molecule_options: MoleculeOptions,
           docking_options: Union[docking.glide.GlideOptions, docking.smina.SminaOptions]
           ) -> Tuple[List[Chem.Mol], List[float]]:
@@ -297,6 +311,10 @@ def score(pop,
         solvability (logP) as well as number of rotatable bonds to
         scale the score.
 
+        :param pop: the population of molecules to score
+        :param molecule_options: a MoleculeOptions object
+        :param docking_options: either a GlideOptions or SminaOptions object.
+        :returns: a tuple of RDKit molecules and corresponding energies
     """
     if isinstance(docking_options, docking.glide.GlideOptions):
         pop, s = docking.glide_score(pop, docking_options)

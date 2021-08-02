@@ -3,12 +3,11 @@ import multiprocessing as mp
 import random
 import string
 import subprocess
-from typing import Optional
+from typing import Optional, List, Tuple
 
 from rdkit import Chem
-from rdkit.Chem import AllChem
 
-from typing import List, Tuple, Union
+from molecule import get_structure
 
 
 @dataclass
@@ -62,44 +61,6 @@ def shell(cmd, program, shell=False):
             raise ValueError("{} Error: Error with docking. Check logs.".format(program))
 
 
-def get_structure(mol: Chem.Mol, num_conformations: int) -> Union[None, Chem.Mol]:
-    """ Converts an RDKit molecule (2D representation) to a 3D representation
-
-    :param Chem.Mol mol: the RDKit molecule
-    :param int num_conformations:
-    :return: an RDKit molecule with 3D structure information
-    """
-    try:
-        s_mol = Chem.MolToSmiles(mol)
-    except ValueError:
-        print("get_structure: could not convert molecule to SMILES")
-        return None
-
-    try:
-        mol = Chem.AddHs(mol)
-    except ValueError as e:
-        print("get_structure: could not kekulize the molecule '{}'".format(s_mol))
-        return None
-
-    new_mol = Chem.Mol(mol)
-
-    try:
-        if num_conformations > 0:
-            AllChem.EmbedMultipleConfs(mol, numConfs=num_conformations, useExpTorsionAnglePrefs=True, useBasicKnowledge=True)
-            conformer_energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, nonBondedThresh=100.0)
-            energies = [e[1] for e in conformer_energies]
-            min_energy_index = energies.index(min(energies))
-            new_mol.AddConformer(mol.GetConformer(min_energy_index))
-        else:
-            AllChem.EmbedMolecule(new_mol)
-            AllChem.MMFFOptimizeMolecule(new_mol)
-    except ValueError:
-        print("Error: get_structure: '{}' could not convert to 3D".format(s_mol))
-        new_mol = None
-    finally:
-        return new_mol
-
-
 def molecule_to_sdf(mol: Chem.Mol, filename: str, name: Optional[str] = None):
     """ Writes an RDKit molecule to SDF format
 
@@ -131,7 +92,7 @@ def molecules_to_structure(population: List[Chem.Mol], num_conformations: int, n
         generated_molecules = pool.starmap(get_structure, args)
 
         molecules = [mol for mol in generated_molecules if mol is not None]
-        names = [''.join(choices(string.ascii_uppercase + string.digits, 6)) for pop in molecules]
+        names = [''.join(choices(string.ascii_uppercase + string.digits, 6)) for m in molecules]
         updated_population = [p for (p, m) in zip(population, generated_molecules) if m is not None]
 
         return molecules, names, updated_population

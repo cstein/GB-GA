@@ -145,7 +145,7 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
         sim_scores, sim_status = parse_output()
     except IOError as e:
         print("GLIDE Warning: Error parsing output in {} with error: {}".format(wrk_dir, e.strerror))
-        sim_scores = np.array([0.0 for i in population])
+        sim_scores = np.zeros(len(population))
         sim_status = np.empty_like(sim_scores)
 
     # TODO: Fix pose extraction
@@ -153,6 +153,7 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
     #       so the numbering is 100 % off.
     # TODO: Fix speed of the following
     #       It takes forever to do this step
+    # TODO: We could store all poses as .maegz
     # copy the current population of poses to parent directory to save it for later
     if options.glide_save_poses:
         os.chmod(shell_extract, stat.S_IRWXU)
@@ -174,8 +175,7 @@ def glide_score(population: List[Chem.Mol], options: GlideOptions) -> Tuple[List
     # remove temporary directory
     if sim_status is not None:
         try:
-            # shutil.rmtree(wrk_dir)
-            pass
+            shutil.rmtree(wrk_dir)
         except OSError:
             # in rare cases, the rmtree function is called before / during the
             # cleanup actions by GLIDE. This raises an OSError because of the
