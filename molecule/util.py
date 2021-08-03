@@ -9,19 +9,27 @@ from rdkit import Chem
 class MoleculeOptions:
     molecule_size: int
     molecule_size_standard_deviation: int
-    molecule_filters: Union[None, List[Chem.Mol]]
     molecule_filters_database: str
+    molecule_filters: Union[None, List[Chem.Mol]]
     nrb_screening: bool
-    nrb_target: int
-    nrb_standard_deviation: int
+    nrb_target: Union[None, int]
+    nrb_standard_deviation: Union[None, int]
     sa_screening: bool
     logp_screening: bool
-    logp_target: float
-    logp_standard_deviation: float
+    logp_target: Union[None, float]
+    logp_standard_deviation: Union[None, float]
+
+
+def create_molecule_options(size: int) -> MoleculeOptions:
+    """ Create the most basic MoleculeOptions object with only molecule size and a basename """
+    return MoleculeOptions(size, 2, "", None, False, None, None, False, False, None, None)
 
 
 def ring_ok(mol: Chem.Mol) -> bool:
-    """ Checks that any rings in a molecule are OK """
+    """ Checks that any rings in a molecule are OK
+
+        :param mol: the molecule to check for rings
+    """
     if not mol.HasSubstructMatch(Chem.MolFromSmarts('[R]')):
         return True
 
@@ -44,7 +52,7 @@ def mol_is_sane(mol: Chem.Mol, molecule_options: MoleculeOptions) -> bool:
 
       :param mol: the RDKit molecule to check whether is sane
       :param molecule_options: Molecule options
-  """
+    """
     # always return True (molecule OK) if a filter is not supplied
     if molecule_options.molecule_filters is None:
         return True
@@ -58,7 +66,7 @@ def mol_is_sane(mol: Chem.Mol, molecule_options: MoleculeOptions) -> bool:
     return True
 
 
-def mol_ok(mol: Chem.Mol, molecule_options: MoleculeOptions) -> bool:
+def mol_ok(mol: Union[None, Chem.Mol], molecule_options: MoleculeOptions) -> bool:
     """ Returns of molecule on input is OK according to various criteria
 
       Criteria currently tested are:
@@ -68,20 +76,27 @@ def mol_ok(mol: Chem.Mol, molecule_options: MoleculeOptions) -> bool:
 
       :param mol: RDKit molecule
       :param molecule_options: the name of the filter to use
-  """
-    try:
-        # check RDKit understands a molecule
-        Chem.SanitizeMol(mol)
-        test_mol = Chem.MolFromSmiles(Chem.MolToSmiles(mol))
-        if test_mol is None:
-            return False
-
-        # check molecule is sane
-        if not mol_is_sane(mol, molecule_options):
-            return False
-
-        # check molecule size
-        target_size = molecule_options.molecule_size_standard_deviation * np.random.randn() + molecule_options.molecule_size
-        return 5 < mol.GetNumAtoms() < target_size
-    except ValueError:
+    """
+    # break early of molecule is invalid
+    if mol is None:
         return False
+
+    # check for sanity
+    try:
+        Chem.SanitizeMol(mol)
+    except (Chem.rdchem.AtomValenceException,
+            Chem.rdchem.KekulizeException):
+        return False
+
+    # can we convert the molecule back and forth between representations?
+    test_mol = Chem.MolFromSmiles(Chem.MolToSmiles(mol))
+    if test_mol is None:
+        return False
+
+    # check molecule is sane
+    if not mol_is_sane(mol, molecule_options):
+        return False
+
+    # check molecule size
+    target_size = molecule_options.molecule_size_standard_deviation * np.random.randn() + molecule_options.molecule_size
+    return 5 < mol.GetNumAtoms() < target_size
