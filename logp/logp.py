@@ -69,11 +69,11 @@ def logp_score(m: Chem.Mol) -> float:
     return sa_score_norm + logp_norm + cycle_score_norm
 
 
-def logp_max_score(m, dummy) -> float:
+def logp_max_score(m: Chem.Mol, dummy) -> float:
     return max(0.0, logp_score(m))
 
 
-def logp_target_score(m, target: float, sigma: float) -> float:
+def logp_target_score(m: Chem.Mol, target: float, sigma: float) -> float:
     """ Computes a logp target score using a gaussian modifier
 
         If the target is hit, the score returned is 1.
@@ -86,7 +86,7 @@ def logp_target_score(m, target: float, sigma: float) -> float:
     return gaussian_modifier(score, target, sigma)
 
 
-def logp_target_score_clipped(m, target: float = 3.5, sigma: float = 2.0) -> float:
+def logp_target_score_clipped(m: Chem.Mol, target: float = 3.5, sigma: float = 2.0) -> float:
     """ Computes a logp target score using a gaussian modifier
 
         If the target is hit, the score returned is 1.
