@@ -1,7 +1,24 @@
+from dataclasses import dataclass
+from typing import Union
+
 from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcNumRotatableBonds
 
+from logp import LogPOptions
 from modifiers import gaussian_modifier, gaussian_modifier_clipped
+
+
+@dataclass
+class NumRotBondsOptions:
+    target: float
+    standard_deviation: float
+
+
+@dataclass
+class ScreenOptions:
+    sa_screening: bool
+    nrb: Union[None, NumRotBondsOptions]
+    logp: Union[None, LogPOptions]
 
 
 def number_of_rotatable_bonds(mol: Chem.Mol) -> int:

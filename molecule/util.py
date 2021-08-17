@@ -9,20 +9,12 @@ from rdkit import Chem
 class MoleculeOptions:
     molecule_size: int
     molecule_size_standard_deviation: int
-    molecule_filters_database: str
     molecule_filters: Union[None, List[Chem.Mol]]
-    nrb_screening: bool
-    nrb_target: Union[None, int]
-    nrb_standard_deviation: Union[None, int]
-    sa_screening: bool
-    logp_screening: bool
-    logp_target: Union[None, float]
-    logp_standard_deviation: Union[None, float]
 
 
 def create_molecule_options(size: int) -> MoleculeOptions:
-    """ Create the most basic MoleculeOptions object with only molecule size and a basename """
-    return MoleculeOptions(size, 2, "", None, False, None, None, False, False, None, None)
+    """ Create the most basic MoleculeOptions object with only molecule size """
+    return MoleculeOptions(size, 2, None)
 
 
 def ring_ok(mol: Chem.Mol) -> bool:

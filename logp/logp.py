@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import sys
 from typing import List, Tuple
 
@@ -10,7 +11,13 @@ from sa import calculateScore
 from modifiers import gaussian_modifier, gaussian_modifier_clipped
 
 
-rdBase.DisableLog('rdApp.error')
+@dataclass
+class LogPOptions:
+    target: float
+    standard_deviation: float
+
+
+# rdBase.DisableLog('rdApp.error')
 
 logP_values = np.loadtxt('logP_values.txt')
 SA_scores = np.loadtxt('SA_scores.txt')

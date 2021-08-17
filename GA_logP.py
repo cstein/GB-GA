@@ -1,28 +1,30 @@
-from rdkit import Chem
-import numpy as np
-import time
-import crossover as co
-import scoring_functions as sc
-import GB_GA as ga 
-import sys
 from multiprocessing import Pool
 import pickle
 import random
+import sys
+import time
+from typing import List, Tuple
+
+from rdkit import Chem
+import numpy as np
+
+# import scoring_functions as sc
+# import GB_GA as ga
+import ga
+import logp
+from logp import logp_target_score
+import molecule
 
 from rdkit import rdBase
+rdBase.DisableLog('rdApp.error')
 
-n_tries = 10 #10
-population_size = 20
-mating_pool_size = 20
-generations = 50
-mutation_rate = 0.05
-co.average_size = 39.15
-co.size_stdev = 3.50
-scoring_function = sc.logP_max
-max_score = 9999.
-scoring_args = []
-n_cpus = 10
-seeds = np.random.randint(100_000, size=2*n_tries)
+n_tries = 4
+population_size = 50
+mating_pool_size = 50
+generations = 100
+mutation_rate = 0.25
+n_cpus = 4
+seeds = np.random.randint(100_000, size=n_tries)
 
 file_name = sys.argv[1]
 
@@ -31,8 +33,7 @@ print('* population_size', population_size)
 print('* mating_pool_size', mating_pool_size)
 print('* generations', generations)
 print('* mutation_rate', mutation_rate)
-print('* max_score', max_score)
-print('* average_size/size_stdev', co.average_size, co.size_stdev)
+# print('* average_size/size_stdev', co.average_size, co.size_stdev)
 print('* initial pool', file_name)
 print('* number of tries', n_tries)
 print('* number of CPUs', n_cpus)
@@ -40,24 +41,53 @@ print('* seeds', ','.join(map(str, seeds)))
 print('* ')
 print('run,score,smiles,generations,representation,prune')
 
-high_scores_list = []
-count = 0
-for prune_population in [True, False]:
-    index = slice(0,n_tries) if prune_population else slice(n_tries,2*n_tries)
-    temp_args = [[population_size, file_name,scoring_function,generations,mating_pool_size,
-                  mutation_rate,scoring_args, max_score, prune_population] for i in range(n_tries)]
+# this example uses logP
+
+
+def score(input_population: List[Chem.Mol], logp_options: logp.LogPOptions) -> Tuple[List[Chem.Mol], List[float]]:
+    return input_population[:], [logp_target_score(mol, logp_options.target, logp_options.standard_deviation) for mol in input_population]
+
+
+def print_list(value: List[float], name: str) -> None:
+    s = f"{name:s}:"
+    for v in value:
+        s += f"{v:6.2f} "
+    print(s)
+
+
+def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, logp_options: logp.LogPOptions) -> Tuple[List[Chem.Mol], List[float]]:
+
+    np.random.seed(ga_opt.random_seed)
+    random.seed(ga_opt.random_seed)
+
+    initial_population = ga.make_initial_population(ga_opt)
+    population, scores = score(initial_population, logp_options)
+
+    for generation in range(ga_opt.num_generations):
+
+        mating_pool = ga.make_mating_pool(population, scores, ga_opt)
+        initial_population = ga.reproduce(mating_pool, ga_opt, mo_opt)
+
+        new_population, new_scores = score(initial_population, logp_options)
+        population, scores = ga.sanitize(population+new_population, scores+new_scores, ga_opt)
+
+    return population, scores
+
+
+if __name__ == '__main__':
     args = []
-    for x,y in zip(temp_args,seeds[index]):
-        x.append(y)
-        args.append(x)
+    for seed in seeds:
+        ga_opt = ga.GAOptions(file_name, "", generations, population_size, mating_pool_size, mutation_rate,
+                              9999.0, seed, True)
+
+        mo_opt = molecule.MoleculeOptions(30, 3, None)
+        logp_opt = logp.LogPOptions(-3., 1.)
+        args.append((ga_opt, mo_opt, logp_opt))
+
     with Pool(n_cpus) as pool:
-        output = pool.map(ga.GA, args)
+        output: List = pool.starmap(gbga, args)
 
-    for i in range(n_tries):   
-        #(scores, population) = ga.GA([population_size, file_name,scoring_function,generations,mating_pool_size,mutation_rate,scoring_args],prune_population)
-        (scores, population, high_scores, generation) = output[i]
-        smiles = Chem.MolToSmiles(population[0], isomericSmiles=True)
-        high_scores_list.append(high_scores)
-        print(f'{i},{scores[0]:.2f},{smiles},{generation},Graph,{prune_population}')
-
-pickle.dump(high_scores_list, open('test.p', 'wb' ))
+    for i, s in enumerate(seeds):
+        scores: List[float]
+        pop, scores = output[i]
+        print(f"{i:d},{scores[0]:3.1f},{logp.logp_score(pop[0]):3.1f},{Chem.MolToSmiles(pop[0]):s}")

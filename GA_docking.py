@@ -11,8 +11,10 @@ import numpy as np
 from rdkit import rdBase
 from rdkit import Chem
 
+import descriptors
 import docking
 import filters
+import logp
 
 from sa import sa_target_score_clipped, neutralize_molecules
 from logp import logp_target_score_clipped
@@ -20,6 +22,18 @@ from descriptors import number_of_rotatable_bonds_target_clipped
 from ga import GAOptions
 from ga import make_initial_population, make_mating_pool, reproduce, sanitize
 from molecule import MoleculeOptions
+
+
+def get_nrb_options(args) -> Union[None, descriptors.NumRotBondsOptions]:
+    if args.screen_nrb:
+        return descriptors.NumRotBondsOptions(args.nrb_target, args.nrb_sigma)
+    return None
+
+
+def get_logp_options(args) -> Union[None, logp.LogPOptions]:
+    if args.screen_logp:
+        return logp.LogPOptions(args.logp_target, args.logp_sigma)
+    return None
 
 
 def reweigh_scores_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List[float]:
@@ -35,21 +49,21 @@ def reweigh_scores_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List
 
 def reweigh_scores_by_logp(molecules: List[Chem.Mol],
                            scores: List[float],
-                           molecule_options: MoleculeOptions) -> List[float]:
+                           logp_options: logp.LogPOptions) -> List[float]:
     """ Reweighs docking scores with logp
 
         :param molecules: list of RDKit molecules to be re-weighted
         :param scores: list of docking scores
-        :param molecule_options:
+        :param logp_options:
         :return: list of re-weighted docking scores
     """
-    logp_target_scores = [logp_target_score_clipped(m, molecule_options.logp_target, molecule_options.logp_standard_deviation) for m in molecules]
+    logp_target_scores = [logp_target_score_clipped(m, logp_options.target, logp_options.standard_deviation) for m in molecules]
     return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
 
 
 def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol],
                                                        scores: List[float],
-                                                       molecule_options: MoleculeOptions) -> List[float]:
+                                                       nrb_options: descriptors.NumRotBondsOptions) -> List[float]:
     """ Reweighs docking scores by number of rotatable bonds.
 
         For some molecules we want a maximum of number of rotatable bonds (typically 5) but
@@ -59,10 +73,10 @@ def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol]
 
         :param molecules:
         :param scores:
-        :param molecule_options:
+        :param nrb_options:
         :return:
     """
-    number_of_rotatable_target_scores = [number_of_rotatable_bonds_target_clipped(m, molecule_options.nrb_target, molecule_options.nrb_standard_deviation) for m in molecules]
+    number_of_rotatable_target_scores = [number_of_rotatable_bonds_target_clipped(m, nrb_options.target, nrb_options.standard_deviation) for m in molecules]
     return [ns * lts for ns, lts in zip(scores, number_of_rotatable_target_scores)]  # rescale scores and force list type
 
 
@@ -119,13 +133,18 @@ def setup() -> argparse.Namespace:
     molecule_settings.add_argument("--mol-stdev", dest="molecule_stdev", metavar="number", type=int, default=molecule_size_standard_deviation, help="Standard deviation of size of molecule. Default: %(default)s.")
     molecule_settings.add_argument("--mol-filters", dest="molecule_filters", metavar="name", type=str, default=None, nargs='+', choices=('Glaxo', 'Dundee', 'BMS', 'PAINS', 'SureChEMBL', 'MLSMR', 'Inpharmatica', 'LINT'), help="Filters to remove wacky molecules. Multiple choices allowed. Choices are: %(choices)s. Default: %(default)s.")
     molecule_settings.add_argument("--mol-filter-db", dest="molecule_filters_database", metavar="file", type=str, action=ExpandPath, default="./alert_collection.csv", help="File with filters. Default: %(default)s")
-    molecule_settings.add_argument("--mol-nrb-screening", dest="nrb_screening", default=False, action="store_true", help="Add this option to target number of rotatable bonds.")
-    molecule_settings.add_argument("--mol-nrb-target", dest="nrb_target", metavar="number", type=int, default=5, help="Target number of rotatable bonds. %(default)s.")
-    molecule_settings.add_argument("--mol-nrb-sigma", dest="nrb_sigma", metavar="number", type=int, default=1, help="Standard deviation of accepted number of rotatable bonds. %(default)s.")
-    molecule_settings.add_argument("--mol-sa-screening", dest="sa_screening", default=sa_screening, action="store_true", help="Add this option to enable synthetic accesibility screening")
-    molecule_settings.add_argument("--mol-logp-screening", dest="logp_screening", default=logp_screening, action="store_true", help="Add this option to enable logP screening")
-    molecule_settings.add_argument("--mol-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
-    molecule_settings.add_argument("--mol-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
+
+    doc_string = """
+    Options for controlling how the final scoring function is scaled.
+    """
+    score_scale_settings = ap.add_argument_group("Score Scaling", doc_string)
+    score_scale_settings.add_argument("--scale-nrb", dest="scale_nrb", default=False, action="store_true", help="Add this option to target a specific number of rotatable bonds.")
+    score_scale_settings.add_argument("--scale-nrb-target", dest="nrb_target", metavar="number", type=int, default=5, help="Target number of rotatable bonds. %(default)s.")
+    score_scale_settings.add_argument("--scale-nrb-sigma", dest="nrb_sigma", metavar="number", type=int, default=1, help="Standard deviation of accepted number of rotatable bonds. %(default)s.")
+    score_scale_settings.add_argument("--scale-sa", dest="scale_sa", default=sa_screening, action="store_true", help="Add this option to keep molecules that are easier to synthesize.")
+    score_scale_settings.add_argument("--scale-logp", dest="scale_logp", default=logp_screening, action="store_true", help="Add this option to target a specifc logP value.")
+    score_scale_settings.add_argument("--scale-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
+    score_scale_settings.add_argument("--scale-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
 
     doc_string = """
     Options for using Glide for docking with GB-GA.
@@ -158,6 +177,7 @@ def setup() -> argparse.Namespace:
 
 def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                MoleculeOptions,
+                                               descriptors.ScreenOptions,
                                                Union[docking.glide.GlideOptions,
                                                      docking.smina.SminaOptions]
                                                ]:
@@ -185,16 +205,13 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
 
     molecule_options: MoleculeOptions = MoleculeOptions(args.molecule_size,
                                                         args.molecule_stdev,
-                                                        args.molecule_filters_database,
                                                         filters.get_molecule_filters(args.molecule_filters,
-                                                                                     args.molecule_filters_database),
-                                                        args.nrb_screening,
-                                                        args.nrb_target,
-                                                        args.nrb_sigma,
-                                                        args.sa_screening,
-                                                        args.logp_screening,
-                                                        args.logp_target,
-                                                        args.logp_sigma)
+                                                                                     args.molecule_filters_database)
+                                                        )
+
+    scaling_options: descriptors.ScreenOptions = descriptors.ScreenOptions(args.scale_sa,
+                                                                           get_nrb_options(args),
+                                                                           get_logp_options(args))
 
     docking_options: Union[docking.glide.GlideOptions,
                            docking.smina.SminaOptions]
@@ -250,11 +267,12 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                      center=np.array(args.smina_center),
                                                      box_size=args.smina_box_size)
 
-    return ga_options, molecule_options, docking_options
+    return ga_options, molecule_options, scaling_options, docking_options
 
 
 def print_options(ga_options: GAOptions,
                   molecule_options: MoleculeOptions,
+                  scaling_options: descriptors.ScreenOptions,
                   docking_options: Union[docking.glide.GlideOptions,
                                          docking.smina.SminaOptions]
                   ) -> None:
@@ -262,10 +280,12 @@ def print_options(ga_options: GAOptions,
 
         :param ga_options: a GAOptions object
         :param molecule_options: a MoleculeOptions object
+        :param scaling_options:
         :param docking_options: either a GlideOptions or SminaOptions object
         :returns: a tuple of RDKit molecules and corresponding energies
     """
     print('* RDKit version', rdBase.rdkitVersion)
+    print('*** GB-GA SETTINGS ***')
     print('* population_size', ga_options.population_size)
     print('* mating_pool_size', ga_options.mating_pool_size)
     print('* generations', ga_options.num_generations)
@@ -279,18 +299,20 @@ def print_options(ga_options: GAOptions,
           molecule_options.molecule_size,
           molecule_options.molecule_size_standard_deviation)
     print('* molecule filters', molecule_options.molecule_filters)
-    print('* molecule filters database', molecule_options.molecule_filters_database)
-    print('* number of rotatable bonds screen', molecule_options.nrb_screening)
-    if molecule_options.nrb_screening:
-        print('* number of rotatable bonds target', molecule_options.nrb_target)
-        print('* number of rotatable bonds sigma', molecule_options.nrb_standard_deviation)
-    print('* synthetic availability screen', molecule_options.sa_screening)
-    print('* logP screening', molecule_options.logp_screening)
-    if molecule_options.logp_screening:
-        print('* logP target', molecule_options.logp_target)
-        print('* logP sigma', molecule_options.logp_standard_deviation)
 
-    print('*** Docking Options ***')
+    print('*** DOCKING SCORE SCALING SETTINGS ***')
+    if scaling_options.nrb is not None:
+        print('* scaling docking score based on number of rotatable bonds')
+        print('* number of rotatable bonds target', scaling_options.nrb.target)
+        print('* number of rotatable bonds sigma', scaling_options.nrb.standard_deviation)
+    if scaling_options.sa_screening:
+        print('* scaling docking score based on synthetic accessibility')
+    if scaling_options.logp is not None:
+        print('* scaling docking score based on logP')
+        print('* logP target', scaling_options.logp.target)
+        print('* logP sigma', scaling_options.logp.standard_deviation)
+
+    print('*** DOCKING SETTINGS ***')
     if isinstance(docking_options, docking.glide.GlideOptions):
         print('* method Glide')
     if isinstance(docking_options, docking.smina.SminaOptions):
@@ -299,11 +321,10 @@ def print_options(ga_options: GAOptions,
     print('* molecule conformations to generate', docking_options.num_conformations)
     print('* number of CPUs', docking_options.num_cpus)
     print('* ')
-    print('run,score,smiles,generations,prune,seed')
 
 
 def score(pop: List[Chem.Mol],
-          molecule_options: MoleculeOptions,
+          scaling_options: descriptors.ScreenOptions,
           docking_options: Union[docking.glide.GlideOptions, docking.smina.SminaOptions]
           ) -> Tuple[List[Chem.Mol], List[float]]:
     """ Scores the population with an appropriate docking method
@@ -314,6 +335,7 @@ def score(pop: List[Chem.Mol],
 
         :param pop: the population of molecules to score
         :param molecule_options: a MoleculeOptions object
+        :param scaling_options:
         :param docking_options: either a GlideOptions or SminaOptions object.
         :returns: a tuple of RDKit molecules and corresponding energies
     """
@@ -324,14 +346,14 @@ def score(pop: List[Chem.Mol],
     else:
         raise ValueError("How did you end up here?")
 
-    if molecule_options.nrb_screening:
-        s = reweigh_scores_by_number_of_rotatable_bonds_target(pop, s, molecule_options)
+    if scaling_options.nrb is not None:
+        s = reweigh_scores_by_number_of_rotatable_bonds_target(pop, s, scaling_options.nrb)
 
-    if molecule_options.sa_screening:
+    if scaling_options.sa_screening:
         s = reweigh_scores_by_sa(neutralize_molecules(pop), s)
 
-    if molecule_options.logp_screening:
-        s = reweigh_scores_by_logp(pop, s, molecule_options)
+    if scaling_options.logp is not None:
+        s = reweigh_scores_by_logp(pop, s, scaling_options.logp)
 
     return pop, s
 
@@ -437,15 +459,15 @@ if __name__ == '__main__':
     # count = 1
 
     arguments_from_input = setup()
-    ga_opt, mo_opt, do_opt = options(arguments_from_input)
-    print_options(ga_opt, mo_opt, do_opt)
+    ga_opt, mo_opt, sc_opt, do_opt = options(arguments_from_input)
+    print_options(ga_opt, mo_opt, sc_opt, do_opt)
 
     t0 = time.time()
     np.random.seed(ga_opt.random_seed)
     random.seed(ga_opt.random_seed)
 
     initial_population = make_initial_population(ga_opt)
-    population, scores = score(initial_population, mo_opt, do_opt)
+    population, scores = score(initial_population, sc_opt, do_opt)
 
     for generation in range(ga_opt.num_generations):
         t1_gen = time.time()
@@ -453,7 +475,7 @@ if __name__ == '__main__':
         mating_pool = make_mating_pool(population, scores, ga_opt)
         initial_population = reproduce(mating_pool, ga_opt, mo_opt)
 
-        new_population, new_scores = score(initial_population, mo_opt, do_opt)
+        new_population, new_scores = score(initial_population, sc_opt, do_opt)
         population, scores = sanitize(population+new_population, scores+new_scores, ga_opt)
 
         t2_gen = time.time()
