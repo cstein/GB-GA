@@ -25,13 +25,13 @@ from molecule import MoleculeOptions
 
 
 def get_nrb_options(args) -> Union[None, descriptors.NumRotBondsOptions]:
-    if args.screen_nrb:
+    if args.scale_nrb:
         return descriptors.NumRotBondsOptions(args.nrb_target, args.nrb_sigma)
     return None
 
 
 def get_logp_options(args) -> Union[None, logp.LogPOptions]:
-    if args.screen_logp:
+    if args.scale_logp:
         return logp.LogPOptions(args.logp_target, args.logp_sigma)
     return None
 
@@ -103,8 +103,8 @@ def setup() -> argparse.Namespace:
     prune_population: bool = True
     basename = ""
     glide_expanded_sampling = False
-    sa_screening = False
-    logp_screening = False
+    sa_scaling = False
+    logp_scaling = False
     logp_target = 3.5
     logp_sigma = 2.0
 
@@ -141,8 +141,8 @@ def setup() -> argparse.Namespace:
     score_scale_settings.add_argument("--scale-nrb", dest="scale_nrb", default=False, action="store_true", help="Add this option to target a specific number of rotatable bonds.")
     score_scale_settings.add_argument("--scale-nrb-target", dest="nrb_target", metavar="number", type=int, default=5, help="Target number of rotatable bonds. %(default)s.")
     score_scale_settings.add_argument("--scale-nrb-sigma", dest="nrb_sigma", metavar="number", type=int, default=1, help="Standard deviation of accepted number of rotatable bonds. %(default)s.")
-    score_scale_settings.add_argument("--scale-sa", dest="scale_sa", default=sa_screening, action="store_true", help="Add this option to keep molecules that are easier to synthesize.")
-    score_scale_settings.add_argument("--scale-logp", dest="scale_logp", default=logp_screening, action="store_true", help="Add this option to target a specifc logP value.")
+    score_scale_settings.add_argument("--scale-sa", dest="scale_sa", default=sa_scaling, action="store_true", help="Add this option to keep molecules that are easier to synthesize.")
+    score_scale_settings.add_argument("--scale-logp", dest="scale_logp", default=logp_scaling, action="store_true", help="Add this option to target a specifc logP value.")
     score_scale_settings.add_argument("--scale-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
     score_scale_settings.add_argument("--scale-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
 

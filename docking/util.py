@@ -61,23 +61,6 @@ def shell(cmd, program, shell=False):
             raise ValueError("{} Error: Error with docking. Check logs.".format(program))
 
 
-def molecule_to_sdf(mol: Chem.Mol, filename: str, name: Optional[str] = None):
-    """ Writes an RDKit molecule to SDF format
-
-    :param mol: the RDKit molecule
-    :param filename: The filename to write to (including extension)
-    :param name: Optional internal name in file
-    :return: None
-    """
-    if mol is None:
-        raise ValueError("molecule_to_sdf: molecule is not valid.")
-    if len(filename) == 0:
-        raise ValueError("molecule_to_sdf: filename is empty.")
-    if name is not None:
-        mol.SetProp("_Name", name)
-    Chem.SDWriter("{}".format(filename)).write(mol)
-
-
 def molecules_to_structure(population: List[Chem.Mol], num_conformations: int, num_cpus: int) -> Tuple[List[Chem.Mol], List[str], List[Chem.Mol]]:
     """ Converts RDKit molecules to structures
 

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+export XTB4STDAHOME=${XTBPATH}
+export STDAHOME=${XTBPATH}
+
+# clean stuff first
+rm -f charges charges3 stda.log tda.dat wbo wfn.xtb xtb4stda.log xtbrestart xtbtopo.mol
+
+# compute absorbance
+$XTB4STDAHOME/xtb4stda input.xyz -chrg ${CHARGE} > xtb4stda.log
+$STDAHOME/stda_v1.6.2 -xtb -e ${ERGTHRES} > stda.log

@@ -13,7 +13,8 @@ import zipfile
 import numpy as np
 from rdkit import Chem
 
-from .util import choices, molecules_to_structure, molecule_to_sdf, shell, substitute_file, DockingOptions
+from .util import choices, molecules_to_structure, shell, substitute_file, DockingOptions
+from molecule.formats import molecule_to_sdf
 
 GLIDE_SETTINGS = {
     'COMPRESS_POSES': False,

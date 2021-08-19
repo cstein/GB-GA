@@ -7,7 +7,8 @@ import sys
 from typing import List, Tuple
 import zipfile
 
-from .util import molecules_to_structure, molecule_to_sdf, shell, substitute_file, DockingOptions
+from .util import molecules_to_structure, shell, substitute_file, DockingOptions
+from molecule.formats import molecule_to_sdf
 
 import numpy as np
 
@@ -137,7 +138,7 @@ def smina_score(population: List[Chem.Mol], options: SminaOptions):
     settings['BOXSIZE'] = options.box_size
     smina_env = "SMINA"
     if smina_env in os.environ:
-        settings['SMINA'] = os.environ.get(smina_env, "")
+        settings[smina_env] = os.environ.get(smina_env, "")
     else:
         raise ValueError("Could not find environment variable '{}' pointing to SMINA".format(smina_env))
     settings['EXE'] = "smina.static"
