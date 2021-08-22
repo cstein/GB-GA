@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 export XTB4STDAHOME=${XTBPATH}
 export STDAHOME=${XTBPATH}
+export OMP_NUM_THREADS=1
 
-# clean stuff first
+# clean (potentially) stuff first
 rm -f charges charges3 stda.log tda.dat wbo wfn.xtb xtb4stda.log xtbrestart xtbtopo.mol
 
 # compute absorbance

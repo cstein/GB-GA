@@ -1,3 +1,4 @@
+""" Code that enables absorption calculations based on XTB """
 from dataclasses import dataclass
 import os
 import shutil
@@ -14,14 +15,12 @@ from docking.util import choices
 from modifiers import linear_threshold_modifier, gaussian_modifier
 from molecule import get_structure
 from molecule.formats import molecule_to_xyz
+from .util import AbsorbanceOptions
 
 
 @dataclass
-class AbsorbanceOptions:
-    target: float
-    standard_deviation: float
-    oscillator_threshold: float
-    energy_threshold: float
+class XTBAbsorbanceOptions(AbsorbanceOptions):
+    path: str
 
 
 def parse_stda_output() -> Tuple[List[float], List[float]]:
@@ -58,11 +57,11 @@ def write_shell_executable(filename: str, shell_settings) -> None:
     :param filename:
     :return:
     """
-    input_file = os.path.join("..", "absorbance", "absorbance.sh.in")
+    input_file = os.path.join("..", "absorbance", "xtb_absorbance.sh.in")
     substitute_file(input_file, filename, shell_settings)
 
 
-def generate(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> List[str]:
+def generate(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> List[str]:
     directories: List[str] = []
 
     # get 3D structures
@@ -74,10 +73,10 @@ def generate(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> List
         os.mkdir(wrk_dir)
         os.chdir(wrk_dir)
         molecule_to_xyz(mol, "input.xyz")
-        write_shell_executable("absorbance.sh", {"XTBPATH": "/home/cstein/test",
+        write_shell_executable("xtb_absorbance.sh", {"XTBPATH": xtb_options.path,
                                                  "CHARGE": Chem.GetFormalCharge(mol),
-                                                 "ERGTHRES": absorbance_options.energy_threshold})
-        os.chmod("absorbance.sh", stat.S_IRWXU)
+                                                 "ERGTHRES": xtb_options.energy_threshold})
+        os.chmod("xtb_absorbance.sh", stat.S_IRWXU)
         os.chdir("..")
         directories.append(wrk_dir)
 
@@ -97,13 +96,20 @@ def clean(directories: List[str]) -> None:
 
 
 def parse(directories: List[str]) -> Tuple[List[List[float]], List[List[float]]]:
+    """ Parses all output from all xtb calculations """
     wavelengths: List[List[float]] = []
     oscillator_strengths: List[List[float]] = []
     for name in directories:
         os.chdir(name)
-        lengths, oscs = parse_stda_output()
-        wavelengths.append(lengths)
-        oscillator_strengths.append(oscs)
+        try:
+            lengths, oscs = parse_stda_output()
+        except IOError as e:
+            print("XTB Warning: Error parsing output in {} with error: {}".format(name, e.strerror))
+            wavelengths.append([0.0])
+            oscillator_strengths.append([0.0])
+        else:
+            wavelengths.append(lengths)
+            oscillator_strengths.append(oscs)
         os.chdir("..")
 
     return wavelengths, oscillator_strengths
@@ -124,11 +130,11 @@ def vector_max_index(values: List[float]) -> int:
     return idx
 
 
-def score(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
+def score(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
     """ Computes the wavelength of the maximum absorption peak for each molecule in a population
 
     """
-    directories = generate(pop, absorbance_options)
+    directories = generate(pop, xtb_options)
 
     # run stuff
     run(directories)
@@ -148,9 +154,9 @@ def score(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> Tuple[L
     return pop, scores
 
 
-def score_max(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
+def score_max(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
 
-    directories = generate(pop, absorbance_options)
+    directories = generate(pop, xtb_options)
 
     # run stuff
     run(directories)
@@ -170,7 +176,7 @@ def score_max(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> Tup
             except IndexError:
                 raise
             else:
-                scores.append(absorption_max_target(value, osc, absorbance_options))
+                scores.append(absorption_max_target(value, osc, xtb_options))
 
     assert len(pop) == len(scores), f"len(pop) = {len(pop):d} == len(scores) = {len(scores):d}"
     clean(directories)
@@ -178,7 +184,8 @@ def score_max(pop: List[Chem.Mol], absorbance_options: AbsorbanceOptions) -> Tup
     return pop, scores
 
 
-def absorption_max_target(absorption: float, osc: float, opt: AbsorbanceOptions) -> float:
+def absorption_max_target(absorption: float, osc: float, opt: XTBAbsorbanceOptions) -> float:
+    """ Absorption """
     return gaussian_modifier(absorption, opt.target, opt.standard_deviation) * linear_threshold_modifier(osc, opt.oscillator_threshold)
 
 

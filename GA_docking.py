@@ -11,28 +11,27 @@ import numpy as np
 from rdkit import rdBase
 from rdkit import Chem
 
-import descriptors
 import docking
 import filters
-import logp
 
-from sa import sa_target_score_clipped, neutralize_molecules
-from logp import logp_target_score_clipped
-from descriptors import number_of_rotatable_bonds_target_clipped
+from descriptors import LogPOptions, NumRotBondsOptions, ScreenOptions
+from descriptors.logp import logp_target_score_clipped
+from descriptors.numrotbonds import number_of_rotatable_bonds_target_clipped
 from ga import GAOptions
 from ga import make_initial_population, make_mating_pool, reproduce, sanitize
 from molecule import MoleculeOptions
+from sa import sa_target_score_clipped, neutralize_molecules
 
 
-def get_nrb_options(args) -> Union[None, descriptors.NumRotBondsOptions]:
+def get_nrb_options(args) -> Union[None, NumRotBondsOptions]:
     if args.scale_nrb:
-        return descriptors.NumRotBondsOptions(args.nrb_target, args.nrb_sigma)
+        return NumRotBondsOptions(args.nrb_target, args.nrb_sigma)
     return None
 
 
-def get_logp_options(args) -> Union[None, logp.LogPOptions]:
+def get_logp_options(args) -> Union[None, LogPOptions]:
     if args.scale_logp:
-        return logp.LogPOptions(args.logp_target, args.logp_sigma)
+        return LogPOptions(args.logp_target, args.logp_sigma)
     return None
 
 
@@ -49,7 +48,7 @@ def reweigh_scores_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List
 
 def reweigh_scores_by_logp(molecules: List[Chem.Mol],
                            scores: List[float],
-                           logp_options: logp.LogPOptions) -> List[float]:
+                           logp_options: LogPOptions) -> List[float]:
     """ Reweighs docking scores with logp
 
         :param molecules: list of RDKit molecules to be re-weighted
@@ -63,7 +62,7 @@ def reweigh_scores_by_logp(molecules: List[Chem.Mol],
 
 def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol],
                                                        scores: List[float],
-                                                       nrb_options: descriptors.NumRotBondsOptions) -> List[float]:
+                                                       nrb_options: NumRotBondsOptions) -> List[float]:
     """ Reweighs docking scores by number of rotatable bonds.
 
         For some molecules we want a maximum of number of rotatable bonds (typically 5) but
@@ -177,7 +176,7 @@ def setup() -> argparse.Namespace:
 
 def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                MoleculeOptions,
-                                               descriptors.ScreenOptions,
+                                               ScreenOptions,
                                                Union[docking.glide.GlideOptions,
                                                      docking.smina.SminaOptions]
                                                ]:
@@ -209,9 +208,9 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
                                                                                      args.molecule_filters_database)
                                                         )
 
-    scaling_options: descriptors.ScreenOptions = descriptors.ScreenOptions(args.scale_sa,
-                                                                           get_nrb_options(args),
-                                                                           get_logp_options(args))
+    scaling_options: ScreenOptions = ScreenOptions(args.scale_sa,
+                                                   get_nrb_options(args),
+                                                   get_logp_options(args))
 
     docking_options: Union[docking.glide.GlideOptions,
                            docking.smina.SminaOptions]
@@ -272,7 +271,7 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
 
 def print_options(ga_options: GAOptions,
                   molecule_options: MoleculeOptions,
-                  scaling_options: descriptors.ScreenOptions,
+                  scaling_options: ScreenOptions,
                   docking_options: Union[docking.glide.GlideOptions,
                                          docking.smina.SminaOptions]
                   ) -> None:
@@ -324,7 +323,7 @@ def print_options(ga_options: GAOptions,
 
 
 def score(pop: List[Chem.Mol],
-          scaling_options: descriptors.ScreenOptions,
+          scaling_options: ScreenOptions,
           docking_options: Union[docking.glide.GlideOptions, docking.smina.SminaOptions]
           ) -> Tuple[List[Chem.Mol], List[float]]:
     """ Scores the population with an appropriate docking method
@@ -334,7 +333,6 @@ def score(pop: List[Chem.Mol],
         scale the score.
 
         :param pop: the population of molecules to score
-        :param molecule_options: a MoleculeOptions object
         :param scaling_options:
         :param docking_options: either a GlideOptions or SminaOptions object.
         :returns: a tuple of RDKit molecules and corresponding energies

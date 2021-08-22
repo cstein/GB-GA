@@ -36,12 +36,13 @@ print('* seeds', ','.join(map(str, seeds)))
 print('* ')
 print('run,score,smiles,generations,representation,prune')
 
-def score(input_population: List[Chem.Mol], absorbance_options: absorbance.AbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
-    p, s = absorbance.absorbance.score_max(input_population, absorbance_options)
+
+def score(input_population: List[Chem.Mol], absorbance_options: absorbance.XTBAbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
+    p, s = absorbance.xtb.score_max(input_population, absorbance_options)
     return p, s
 
 
-def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, absorbance_options: absorbance.AbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
+def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, absorbance_options: absorbance.XTBAbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
 
     np.random.seed(ga_opt.random_seed)
     random.seed(ga_opt.random_seed)
@@ -63,7 +64,7 @@ def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, absorbance_opti
 if __name__ == '__main__':
     args = []
     mo_opt = molecule.MoleculeOptions(30, 3, None)
-    absorbance_opt = absorbance.AbsorbanceOptions(400.0, 20.0, 0.3, 7.0)
+    absorbance_opt = absorbance.XTBAbsorbanceOptions(400.0, 20.0, 0.3, 7.0, "/home/cstein/test")
     for seed in seeds:
         ga_opt = ga.GAOptions(file_name, "", generations, population_size, mating_pool_size, mutation_rate,
                               9999.0, seed, True)
@@ -79,5 +80,5 @@ if __name__ == '__main__':
     for i, s in enumerate(seeds):
         scores: List[float]
         pop, scores = output[i]
-        p, lambdas = absorbance.absorbance.score(pop, absorbance_opt)
+        p, lambdas = absorbance.xtb.score(pop, absorbance_opt)
         print(f"{i:d},{scores[0]:3.1f},{lambdas[0]:6.1f},{Chem.MolToSmiles(pop[0]):s}")

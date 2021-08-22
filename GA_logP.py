@@ -11,17 +11,17 @@ import numpy as np
 # import scoring_functions as sc
 # import GB_GA as ga
 import ga
-import logp
-from logp import logp_target_score
+from descriptors import LogPOptions
+from descriptors.logp import logp_score, logp_target_score
 import molecule
 
 from rdkit import rdBase
 rdBase.DisableLog('rdApp.error')
 
 n_tries = 4
-population_size = 50
-mating_pool_size = 50
-generations = 100
+population_size = 10
+mating_pool_size = 10
+generations = 2
 mutation_rate = 0.25
 n_cpus = 4
 seeds = np.random.randint(100_000, size=n_tries)
@@ -44,7 +44,7 @@ print('run,score,smiles,generations,representation,prune')
 # this example uses logP
 
 
-def score(input_population: List[Chem.Mol], logp_options: logp.LogPOptions) -> Tuple[List[Chem.Mol], List[float]]:
+def score(input_population: List[Chem.Mol], logp_options: LogPOptions) -> Tuple[List[Chem.Mol], List[float]]:
     return input_population[:], [logp_target_score(mol, logp_options.target, logp_options.standard_deviation) for mol in input_population]
 
 
@@ -55,7 +55,7 @@ def print_list(value: List[float], name: str) -> None:
     print(s)
 
 
-def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, logp_options: logp.LogPOptions) -> Tuple[List[Chem.Mol], List[float]]:
+def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, logp_options: LogPOptions) -> Tuple[List[Chem.Mol], List[float]]:
 
     np.random.seed(ga_opt.random_seed)
     random.seed(ga_opt.random_seed)
@@ -81,7 +81,7 @@ if __name__ == '__main__':
                               9999.0, seed, True)
 
         mo_opt = molecule.MoleculeOptions(30, 3, None)
-        logp_opt = logp.LogPOptions(-3., 1.)
+        logp_opt = LogPOptions(-3., 1.)
         args.append((ga_opt, mo_opt, logp_opt))
 
     with Pool(n_cpus) as pool:
@@ -90,4 +90,4 @@ if __name__ == '__main__':
     for i, s in enumerate(seeds):
         scores: List[float]
         pop, scores = output[i]
-        print(f"{i:d},{scores[0]:3.1f},{logp.logp_score(pop[0]):3.1f},{Chem.MolToSmiles(pop[0]):s}")
+        print(f"{i:d},{scores[0]:3.1f},{logp_score(pop[0]):3.1f},{Chem.MolToSmiles(pop[0]):s}")
