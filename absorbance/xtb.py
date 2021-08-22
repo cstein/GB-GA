@@ -61,7 +61,7 @@ def write_shell_executable(filename: str, shell_settings) -> None:
     substitute_file(input_file, filename, shell_settings)
 
 
-def generate(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> List[str]:
+def generate(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[List[Chem.Mol], List[str]]:
     directories: List[str] = []
 
     # get 3D structures
@@ -80,13 +80,13 @@ def generate(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> List[str
         os.chdir("..")
         directories.append(wrk_dir)
 
-    return directories
+    return population, directories
 
 
 def run(directories: List[str]) -> None:
     for name in directories:
         os.chdir(name)
-        shell("./absorbance.sh", "stda")
+        shell("./xtb_absorbance.sh", "stda")
         os.chdir("..")
 
 
@@ -134,7 +134,7 @@ def score(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[List[
     """ Computes the wavelength of the maximum absorption peak for each molecule in a population
 
     """
-    directories = generate(pop, xtb_options)
+    population, directories = generate(pop, xtb_options)
 
     # run stuff
     run(directories)
@@ -151,12 +151,12 @@ def score(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[List[
 
     # clean(directories)
 
-    return pop, scores
+    return population, scores
 
 
 def score_max(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[List[Chem.Mol], List[float]]:
 
-    directories = generate(pop, xtb_options)
+    population, directories = generate(pop, xtb_options)
 
     # run stuff
     run(directories)
@@ -178,10 +178,10 @@ def score_max(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[L
             else:
                 scores.append(absorption_max_target(value, osc, xtb_options))
 
-    assert len(pop) == len(scores), f"len(pop) = {len(pop):d} == len(scores) = {len(scores):d}"
+    assert len(population) == len(scores), f"len(population) = {len(population):d} == len(scores) = {len(scores):d}"
     clean(directories)
 
-    return pop, scores
+    return population, scores
 
 
 def absorption_max_target(absorption: float, osc: float, opt: XTBAbsorbanceOptions) -> float:
