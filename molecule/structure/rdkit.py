@@ -2,6 +2,8 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 
 from typing import Union, List, Tuple
+from molecule.formats import molecules_to_sdf
+from docking.util import shell
 
 
 def _embed_simple(mol: Chem.Mol) -> Union[None, Chem.Mol]:
@@ -84,3 +86,21 @@ def get_structure(mol: Chem.Mol, num_conformations: int) -> Union[None, Chem.Mol
         return _embed_multiple(mol, num_conformations)
     else:
         return _embed_simple(mol)
+
+
+def molecules_to_structure(population: List[Chem.Mol]) -> None:
+    """ Converts RDKit molecules to structures
+
+            :param population: molecules without 3D structures
+            :param num_conformations: number of conformations to generate for each ligand. Only returns the best.
+            :param num_cpus: number of cpus to use
+            :returns: A tuple consisting of a list of RDKit molecules with 3D geometry, a list of molecule names and a list with the populatiob molecules
+        """
+
+    generated_molecules = [get_structure(p, 0) for p in population]
+    molecules = [mol for mol in generated_molecules if mol is not None]
+    for i, mol in enumerate(molecules, start=1):
+        mol.SetProp("_Name", "out.sdf:{}".format(i))
+    # updated_population = [p for (p, m) in zip(population, generated_molecules) if m is not None]
+    molecules_to_sdf(molecules, "out.sdf")
+

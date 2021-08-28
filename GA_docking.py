@@ -4,6 +4,7 @@ import os
 import os.path
 import pickle
 import random
+import shutil
 import time
 from typing import List, Union, Tuple
 
@@ -12,7 +13,12 @@ from rdkit import rdBase
 from rdkit import Chem
 
 import docking
+import docking.util
 import filters
+import molecule.util
+import molecule.structure
+import molecule.structure.ligprep
+import molecule.structure.rdkit
 
 from descriptors import LogPOptions, NumRotBondsOptions, ScreenOptions
 from descriptors.logp import logp_target_score_clipped
@@ -119,7 +125,6 @@ def setup() -> argparse.Namespace:
     ga_settings.add_argument("-m", "--matsize", metavar="number", type=int, default=mating_pool_size, help="Mating pool size. Default: %(default)s.")
     ga_settings.add_argument("--mutation-rate", metavar="number", type=float, default=mutation_rate, help="Mutation rate. Default: %(default)s.")
     ga_settings.add_argument("--ncpu", metavar="number", type=int, default=num_cpus, help="number of CPUs to use. Default: %(default)s.")
-    ga_settings.add_argument("--nconf", metavar="number", type=int, default=num_conformations, help="number of conformations per ligand to sample. Default: %(default)s.")
     ga_settings.add_argument("--maxscore", metavar="float", type=float, default=max_score, help="The maximum value of the property. Default: %(default)s.")
     ga_settings.add_argument("--randint", metavar="number", type=int, default=-1, help="Specify a positive integer as random seed. Any other values will sample a number from random distribution. Default: %(default)s")
     ga_settings.add_argument("--no-prune", default=prune_population, dest="prune_population", action="store_false", help="No pruning of mating pools and generations.")
@@ -144,6 +149,14 @@ def setup() -> argparse.Namespace:
     score_scale_settings.add_argument("--scale-logp", dest="scale_logp", default=logp_scaling, action="store_true", help="Add this option to target a specifc logP value.")
     score_scale_settings.add_argument("--scale-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
     score_scale_settings.add_argument("--scale-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
+
+    doc_string = """
+    Options for controlling how conformers are generated.
+    Built-in means generating conformers based on RDKit whereas LigPrep can be activated if it is available.
+    """
+    conformer_settings = ap.add_argument_group("Conformer Settings", doc_string)
+    conformer_settings.add_argument("--conf-method", dest="conformer_method", default="builtin", choices=("builtin", "ligprep"), type=str, help="Method for conformer generation. Default: %(default)s")
+    ga_settings.add_argument("--nconf", dest="conformer_number", metavar="number", type=int, default=num_conformations, help="number of conformations per ligand to sample. Default: %(default)s.")
 
     doc_string = """
     Options for using Glide for docking with GB-GA.
@@ -191,6 +204,12 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
         random_seed = args.randint
     else:
         random_seed = np.random.randint(100000, size=1)[0]
+
+    structure_options: Union[docking.util.RDKit, docking.util.LigPrep]
+    if args.conformer_method == "ligprep":
+        structure_options = docking.util.LigPrep(args.conformer_number)
+    else:
+        structure_options = docking.util.RDKit(args.conformer_number)
 
     ga_options: GAOptions = GAOptions(args.smilesfile,
                                       args.basename,
@@ -241,8 +260,8 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
             print("")
 
         docking_options = docking.glide.GlideOptions(basename=args.basename,
-                                                     num_conformations=args.nconf,
                                                      num_cpus=args.ncpu,
+                                                     structure_options=structure_options,
                                                      glide_method=args.glide_method,
                                                      glide_precision=args.glide_precision,
                                                      glide_grid=args.glide_grid,
@@ -260,8 +279,8 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
             raise ValueError("Could not find environment variable 'SMINA'")
 
         docking_options = docking.smina.SminaOptions(basename=args.basename,
-                                                     num_conformations=args.nconf,
                                                      num_cpus=args.ncpu,
+                                                     structure_options=structure_options,
                                                      receptor=args.smina_grid,
                                                      center=np.array(args.smina_center),
                                                      box_size=args.smina_box_size)
@@ -317,12 +336,13 @@ def print_options(ga_options: GAOptions,
     if isinstance(docking_options, docking.smina.SminaOptions):
         print('* method SMINA')
     print(docking_options)
-    print('* molecule conformations to generate', docking_options.num_conformations)
+    # print('* molecule conformations to generate', docking_options.num_conformations)
     print('* number of CPUs', docking_options.num_cpus)
     print('* ')
 
 
 def score(pop: List[Chem.Mol],
+          molecule_options: MoleculeOptions,
           scaling_options: ScreenOptions,
           docking_options: Union[docking.glide.GlideOptions, docking.smina.SminaOptions]
           ) -> Tuple[List[Chem.Mol], List[float]]:
@@ -333,12 +353,28 @@ def score(pop: List[Chem.Mol],
         scale the score.
 
         :param pop: the population of molecules to score
+        :param molecule_options:
         :param scaling_options:
         :param docking_options: either a GlideOptions or SminaOptions object.
         :returns: a tuple of RDKit molecules and corresponding energies
     """
+    # work directory
+    from docking.util import choices
+    import string
+    wrk_dir = docking_options.basename + "_" + ''.join(choices(string.ascii_uppercase + string.digits, 6))
+    os.mkdir(wrk_dir)
+    os.chdir(wrk_dir)
+
+    # generate structures
+    if isinstance(docking_options.structure_options, docking.util.RDKit):
+        molecule.structure.rdkit.molecules_to_structure(pop)
+    elif isinstance(docking_options.structure_options, docking.util.LigPrep):
+        molecule.structure.ligprep.molecules_to_structure(pop)
+    else:
+        raise ValueError("No structure method selected. How did you end up here?")
+
     if isinstance(docking_options, docking.glide.GlideOptions):
-        pop, s = docking.glide_score(pop, docking_options)
+        pop, s = docking.glide_score(docking_options)
     elif isinstance(docking_options, docking.smina.SminaOptions):
         pop, s = docking.smina_score(pop, docking_options)
     else:
@@ -353,7 +389,20 @@ def score(pop: List[Chem.Mol],
     if scaling_options.logp is not None:
         s = reweigh_scores_by_logp(pop, s, scaling_options.logp)
 
-    return pop, s
+    os.chdir("..")
+    # remove temporary directory
+    try:
+        pass # shutil.rmtree(wrk_dir)
+    except OSError:
+        # in rare cases, the rmtree function is called before / during the
+        # cleanup actions by GLIDE. This raises an OSError because of the
+        # way that rmtree works (list all files, then delete individually)
+        # Here, we simply let it slide so the USER can deal with it later
+        print("GLIDE Warning: Could not delete working directory `{}`. Please delete when done.".format(wrk_dir))
+
+    # we flip the sign on the score because the GA maximizes
+    # the score (both glide and smina returns negative scores)
+    return pop, [-value for value in s]
 
 
 # def molecule_substruct_matches(mol: Chem.Mol, matches: Union[None, List[Chem.Mol]]) -> bool:
@@ -465,7 +514,7 @@ if __name__ == '__main__':
     random.seed(ga_opt.random_seed)
 
     initial_population = make_initial_population(ga_opt)
-    population, scores = score(initial_population, sc_opt, do_opt)
+    population, scores = score(initial_population, mo_opt, sc_opt, do_opt)
 
     for generation in range(ga_opt.num_generations):
         t1_gen = time.time()
@@ -473,7 +522,7 @@ if __name__ == '__main__':
         mating_pool = make_mating_pool(population, scores, ga_opt)
         initial_population = reproduce(mating_pool, ga_opt, mo_opt)
 
-        new_population, new_scores = score(initial_population, sc_opt, do_opt)
+        new_population, new_scores = score(initial_population, mo_opt, sc_opt, do_opt)
         population, scores = sanitize(population+new_population, scores+new_scores, ga_opt)
 
         t2_gen = time.time()

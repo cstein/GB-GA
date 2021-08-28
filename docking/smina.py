@@ -7,12 +7,10 @@ import sys
 from typing import List, Tuple
 import zipfile
 
-from .util import molecules_to_structure, shell, substitute_file, DockingOptions
+from .util import shell, substitute_file, DockingOptions
 from molecule.formats import molecule_to_sdf
 
 import numpy as np
-
-import rdkit
 from rdkit import Chem
 
 
@@ -146,7 +144,9 @@ def smina_score(population: List[Chem.Mol], options: SminaOptions):
         settings['EXE'] = "smina.osx"
 
     # Generate 3D structures of molecules
-    molecules, names, population = molecules_to_structure(population, options.num_conformations, options.num_cpus)
+    # molecules, names, population = molecules_to_structure(population, options.num_conformations, options.num_cpus)
+    names: List[str] = []
+    molecules: List[Chem.Mol] = []
 
     # write files to folders
     for name, mol in zip(names, molecules):

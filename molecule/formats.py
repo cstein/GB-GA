@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from rdkit import Chem
 
@@ -18,6 +18,26 @@ def molecule_to_sdf(mol: Chem.Mol, filename: str, name: Optional[str] = None):
     if name is not None:
         mol.SetProp("_Name", name)
     Chem.SDWriter("{}".format(filename)).write(mol)
+
+
+def molecules_to_sdf(mols: List[Chem.Mol], filename: str) -> None:
+    """ Writes a list of RDKit molecules to a single SDF format file
+
+    :param mols: the RDKit molecule
+    :param filename: The filename to write to (including extension)
+    :return: None
+    """
+    w = Chem.SDWriter(filename)
+    for mol in mols:
+        w.write(mol)
+    w.close()
+
+
+def molecules_to_smi(population: List[Chem.Mol], filename: str) -> None:
+    with open(filename, "w") as smi_file:
+        for mol in population:
+            s = "{0:s}\n".format(Chem.MolToSmiles(mol))
+            smi_file.write(s)
 
 
 def molecule_to_xyz(mol: Chem.Mol, filename: str, name: Optional[str] = None):
