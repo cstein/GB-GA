@@ -380,6 +380,8 @@ def score(pop: List[Chem.Mol],
     else:
         raise ValueError("How did you end up here?")
 
+    os.chdir("..")
+
     if scaling_options.nrb is not None:
         s = reweigh_scores_by_number_of_rotatable_bonds_target(pop, s, scaling_options.nrb)
 
@@ -389,7 +391,6 @@ def score(pop: List[Chem.Mol],
     if scaling_options.logp is not None:
         s = reweigh_scores_by_logp(pop, s, scaling_options.logp)
 
-    os.chdir("..")
     # remove temporary directory
     try:
         pass # shutil.rmtree(wrk_dir)

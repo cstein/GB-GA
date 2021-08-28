@@ -2,7 +2,7 @@
 # This script will always generate a subset.smi file based
 # on either the results from LigPrep or RDKit. If a subset.smi
 # file is not present an error is thrown
-export SCHRODINGER="/opt/schrodinger/suites2021-2"
+export SCHRODINGER="$SCHRODPATH"
 
 # LigPrep
 if [ -e subset.mae ]

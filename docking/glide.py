@@ -146,7 +146,7 @@ def parse_output(structure_options: Union[None, RDKit, LigPrep]) -> Tuple[List[C
     # a commond .smiles format so we can load the best structure (ligprep only)
     # for a given score.
     shell_exec = "f2smi.sh"
-    substitute_file("../molecule/f2smi.in.sh", shell_exec, {})
+    substitute_file("../molecule/f2smi.in.sh", shell_exec, {"SCHRODPATH": os.environ.get("SCHRODINGER")})
     os.chmod(shell_exec, stat.S_IRWXU)
     shell("./f2smi.sh", "F2SMI")
 

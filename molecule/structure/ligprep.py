@@ -32,6 +32,7 @@ def extract_subset(indices: List[int], filename: str):
     substitute_file("../molecule/structure/ligprep_extract_subset.in.sh",
                     shell_exec,
                     {"INDICES": ",".join(map(str, indices)),
-                     "FILENAME": filename})
+                     "FILENAME": filename,
+                     "SCHRODPATH": os.environ.get("SCHRODINGER")})
     os.chmod(shell_exec, stat.S_IRWXU)
     shell("./{}".format(shell_exec), "LIGPREP_EXTRACT_SUBSET")
