@@ -14,6 +14,7 @@ from typing import Union
 @dataclass
 class StructureOptions:
     num_conformations: int = 1
+    num_cpus: int = 1
 
 
 @dataclass

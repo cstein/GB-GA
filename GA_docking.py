@@ -156,7 +156,8 @@ def setup() -> argparse.Namespace:
     """
     conformer_settings = ap.add_argument_group("Conformer Settings", doc_string)
     conformer_settings.add_argument("--conf-method", dest="conformer_method", default="builtin", choices=("builtin", "ligprep"), type=str, help="Method for conformer generation. Default: %(default)s")
-    ga_settings.add_argument("--nconf", dest="conformer_number", metavar="number", type=int, default=num_conformations, help="number of conformations per ligand to sample. Default: %(default)s.")
+    conformer_settings.add_argument("--nconf", dest="conformer_number", metavar="number", type=int, default=num_conformations, help="number of conformations per ligand to sample. Default: %(default)s.")
+    conformer_settings.add_argument("--conf-cpus", dest="conformer_cpus", metavar="number", type=int, default=num_conformations, help="number of conformations per ligand to sample. Default: %(default)s.")
 
     doc_string = """
     Options for using Glide for docking with GB-GA.
@@ -207,9 +208,9 @@ def options(args: argparse.Namespace) -> Tuple[GAOptions,
 
     structure_options: Union[docking.util.RDKit, docking.util.LigPrep]
     if args.conformer_method == "ligprep":
-        structure_options = docking.util.LigPrep(args.conformer_number)
+        structure_options = docking.util.LigPrep(args.conformer_number, args.conformer_cpus)
     else:
-        structure_options = docking.util.RDKit(args.conformer_number)
+        structure_options = docking.util.RDKit(args.conformer_number, args.conformer_cpus)
 
     ga_options: GAOptions = GAOptions(args.smilesfile,
                                       args.basename,
@@ -369,7 +370,7 @@ def score(pop: List[Chem.Mol],
     if isinstance(docking_options.structure_options, docking.util.RDKit):
         molecule.structure.rdkit.molecules_to_structure(pop)
     elif isinstance(docking_options.structure_options, docking.util.LigPrep):
-        molecule.structure.ligprep.molecules_to_structure(pop)
+        molecule.structure.ligprep.molecules_to_structure(pop, docking_options.structure_options.num_cpus)
     else:
         raise ValueError("No structure method selected. How did you end up here?")
 

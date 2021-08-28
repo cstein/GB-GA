@@ -14,13 +14,13 @@ def write_ligprep_settings(out_filename: str) -> None:
     substitute_file("../molecule/structure/ligprep.in.inp", out_filename, {})
 
 
-def write_shell_executable(out_filename: str) -> None:
-    s2 = dict(SCHRODPATH=os.environ.get("SCHRODINGER"))
+def write_shell_executable(out_filename: str, num_cpus: int) -> None:
+    s2 = dict(SCHRODPATH=os.environ.get("SCHRODINGER"), NCPUS=num_cpus)
     substitute_file("../molecule/structure/ligprep.in.sh", out_filename, s2)
 
 
-def molecules_to_structure(population: List[Chem.Mol]) -> None:
-    write_shell_executable("ligprep.sh")
+def molecules_to_structure(population: List[Chem.Mol], num_cpus: int) -> None:
+    write_shell_executable("ligprep.sh", num_cpus)
     write_ligprep_settings("ligprep.inp")
     molecules_to_smi(population, "input.smi")
     os.chmod("ligprep.sh", stat.S_IRWXU)
