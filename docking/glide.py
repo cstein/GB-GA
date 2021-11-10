@@ -143,12 +143,19 @@ def parse_output(structure_options: Union[None, RDKit, LigPrep]) -> Tuple[List[C
         pass
 
     # extract results from LigPrep or RDKit and save everything to
-    # a commond .smiles format so we can load the best structure (ligprep only)
+    # a common .smiles format so we can load the best structure (ligprep only)
     # for a given score.
     shell_exec = "f2smi.sh"
     substitute_file("../molecule/f2smi.in.sh", shell_exec, {"SCHRODPATH": os.environ.get("SCHRODINGER")})
     os.chmod(shell_exec, stat.S_IRWXU)
     shell("./f2smi.sh", "F2SMI")
+
+    # if we do not want to use replacement for ligprep
+    # we fake the whole thing by copying the original
+    # input smiles file to the subset.smi file
+    if isinstance(structure_options, LigPrep):
+        if not structure_options.replace_best_conformer_in_population:
+            shutil.copyfile("input.smi", "subset.smi")
 
     # read back the smiles strings from the best molecules
     molecules = read_smiles_file("subset.smi")

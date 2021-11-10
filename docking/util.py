@@ -20,6 +20,7 @@ class StructureOptions:
 @dataclass
 class LigPrep(StructureOptions):
     filename: str = "out.maegz"
+    replace_best_conformer_in_population: bool = False
 
 
 @dataclass

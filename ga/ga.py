@@ -3,6 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 from rdkit import Chem
+from rdkit import rdBase
 
 from molecule import MoleculeOptions
 from .crossover import crossover
@@ -63,6 +64,7 @@ def reproduce(mating_pool: List[Chem.Mol],
         :param molecule_options: Options for molecules
         :returns: a list of molecules that are offspring of the mating_pool
     """
+    rdBase.DisableLog("rdApp.error")
     new_population: List[Chem.Mol] = []
     while len(new_population) < options.population_size:
         parent_a = np.random.choice(mating_pool)
@@ -72,6 +74,7 @@ def reproduce(mating_pool: List[Chem.Mol],
             mutated_child = mutate(new_child, options.mutation_rate, molecule_options)
             if mutated_child is not None:
                 new_population.append(mutated_child)
+    rdBase.EnableLog("rdApp.error")
 
     return new_population
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# This script will always generate a subset.smi file based
-# on either the results from LigPrep or RDKit. If a subset.smi
-# file is not present an error is thrown
+# Generates a `subset.smi` file based on output from
+# either RDKit or LigPrep.
+# If a subset.smi file is not present, an error is thrown
 export SCHRODINGER="$SCHRODPATH"
 
 # LigPrep
