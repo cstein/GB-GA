@@ -376,6 +376,7 @@ def score(pop: List[Chem.Mol],
     else:
         raise ValueError("No structure method selected. How did you end up here?")
 
+    # score based on method
     if isinstance(docking_options, docking.glide.GlideOptions):
         pop, s = docking.glide_score(docking_options)
     elif isinstance(docking_options, docking.smina.SminaOptions):
@@ -396,7 +397,7 @@ def score(pop: List[Chem.Mol],
 
     # remove temporary directory
     try:
-        pass # shutil.rmtree(wrk_dir)
+        pass  # shutil.rmtree(wrk_dir)
     except OSError:
         # in rare cases, the rmtree function is called before / during the
         # cleanup actions by GLIDE. This raises an OSError because of the

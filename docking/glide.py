@@ -6,14 +6,10 @@ from dataclasses import dataclass
 import shutil
 import os
 import stat
-import string
 from typing import List, Tuple, Union
-import zipfile
 
-import numpy as np
 from rdkit import Chem
 
-import docking.util
 import molecule.structure.ligprep
 from ga.util import read_smiles_file
 from .util import shell, substitute_file, DockingOptions, RDKit, LigPrep
