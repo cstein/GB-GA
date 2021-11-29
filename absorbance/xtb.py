@@ -4,7 +4,7 @@ import os
 import shutil
 import stat
 import string
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import numpy as np
 
@@ -21,6 +21,7 @@ from .util import AbsorbanceOptions
 @dataclass
 class XTBAbsorbanceOptions(AbsorbanceOptions):
     path: str
+    solvent: Optional[str]
 
 
 def parse_stda_output() -> Tuple[List[float], List[float]]:
@@ -73,9 +74,13 @@ def generate(pop: List[Chem.Mol], xtb_options: XTBAbsorbanceOptions) -> Tuple[Li
         os.mkdir(wrk_dir)
         os.chdir(wrk_dir)
         molecule_to_xyz(mol, "input.xyz")
+        solvent_model = ""
+        if xtb_options.solvent is not None:
+            solvent_model = "-gbsa {}".format(xtb_options.solvent)
         write_shell_executable("xtb_absorbance.sh", {"XTBPATH": xtb_options.path,
                                                  "CHARGE": Chem.GetFormalCharge(mol),
-                                                 "ERGTHRES": xtb_options.energy_threshold})
+                                                 "ERGTHRES": xtb_options.energy_threshold,
+                                                 "SOLVENT": solvent_model})
         os.chmod("xtb_absorbance.sh", stat.S_IRWXU)
         os.chdir("..")
         directories.append(wrk_dir)

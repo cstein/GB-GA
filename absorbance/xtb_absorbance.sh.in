@@ -2,10 +2,12 @@
 export XTB4STDAHOME=${XTBPATH}
 export STDAHOME=${XTBPATH}
 export OMP_NUM_THREADS=1
+export SOLVENT=${XTBSOLVENT}
 
 # clean (potentially) stuff first
 rm -f charges charges3 stda.log tda.dat wbo wfn.xtb xtb4stda.log xtbrestart xtbtopo.mol
 
 # compute absorbance
-$XTB4STDAHOME/xtb4stda input.xyz -chrg ${CHARGE} > xtb4stda.log
+$XTB4STDAHOME/xtb4stda input.xyz -chrg ${CHARGE} ${SOLVENT} > xtb4stda.log
 $STDAHOME/stda_v1.6.2 -xtb -e ${ERGTHRES} > stda.log
+
