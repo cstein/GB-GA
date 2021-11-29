@@ -14,12 +14,12 @@ from rdkit import rdBase
 rdBase.DisableLog('rdApp.error')
 
 n_tries = 4
-population_size = 15
-mating_pool_size = 15
-generations = 50
+population_size = 10
+mating_pool_size = 10
+generations = 20
 mutation_rate = 0.25
-n_cpus = 1
-seeds = [95818,2727,88263,12083] # np.random.randint(100_000, size=n_tries)
+n_cpus = 4
+seeds = np.random.randint(100_000, size=n_tries)
 
 file_name = sys.argv[1]
 
@@ -57,7 +57,6 @@ def gbga(ga_opt: ga.GAOptions, mo_opt: molecule.MoleculeOptions, absorbance_opti
 
         new_population, new_scores = score(initial_population, absorbance_options)
         population, scores = ga.sanitize(population+new_population, scores+new_scores, ga_opt)
-        print(f"generation {generation:d}")
 
     return population, scores
 
@@ -67,23 +66,17 @@ if __name__ == '__main__':
     mo_opt = molecule.MoleculeOptions(50, 3, None)
     solvent = None
     absorbance_opt = absorbance.XTBAbsorbanceOptions(400.0, 20.0, 0.3, 7.0, "/home/cstein/absorbance_xtb", solvent)
-    for seed in [seeds[2]]:
+    for seed in seeds:
         ga_opt = ga.GAOptions(file_name, "", generations, population_size, mating_pool_size, mutation_rate,
                               9999.0, seed, True)
 
         args.append((ga_opt, mo_opt, absorbance_opt))
 
-    for i, arg in enumerate(args):
-        pop, scores = gbga(*arg)
+    with Pool(n_cpus) as pool:
+        output: List = pool.starmap(gbga, args)
+
+    for i, s in enumerate(seeds):
+        scores: List[float]
+        pop, scores = output[i]
         p, lambdas = absorbance.xtb.score(pop, absorbance_opt)
         print(f"{i:d},{scores[0]:3.1f},{lambdas[0]:6.1f},{Chem.MolToSmiles(pop[0]):s}")
-    # i=1
-    # print(f"{i:d},{scores[0]:3.1f},{Chem.MolToSmiles(pop[0]):s}")
-    # with Pool(n_cpus) as pool:
-    #     output: List = pool.starmap(gbga, args)
-
-    # for i, s in enumerate(seeds):
-    #     scores: List[float]
-    #     pop, scores = output[i]
-    #     p, lambdas = absorbance.xtb.score(pop, absorbance_opt)
-    #     print(f"{i:d},{scores[0]:3.1f},{lambdas[0]:6.1f},{Chem.MolToSmiles(pop[0]):s}")
