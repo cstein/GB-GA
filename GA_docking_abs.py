@@ -6,7 +6,7 @@ import pickle
 import random
 import shutil
 import time
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 
 import numpy as np
 from rdkit import rdBase
@@ -21,6 +21,8 @@ import molecule.structure.ligprep
 import molecule.structure.rdkit
 
 from descriptors import LogPOptions, NumRotBondsOptions, ScreenOptions
+from absorbance import XTBAbsorbanceOptions
+from absorbance.xtb import score_max
 from descriptors.logp import logp_target_score_clipped
 from descriptors.numrotbonds import number_of_rotatable_bonds_target_clipped
 from ga import GAOptions
@@ -29,15 +31,33 @@ from molecule import MoleculeOptions
 from sa import sa_target_score_clipped, neutralize_molecules
 
 
-def get_nrb_options(args) -> Union[None, NumRotBondsOptions]:
+def get_nrb_options(args) -> Optional[NumRotBondsOptions]:
     if args.scale_nrb:
         return NumRotBondsOptions(args.nrb_target, args.nrb_sigma)
     return None
 
 
-def get_logp_options(args) -> Union[None, LogPOptions]:
+def get_logp_options(args) -> Optional[LogPOptions]:
     if args.scale_logp:
         return LogPOptions(args.logp_target, args.logp_sigma)
+    return None
+
+
+def get_absorbance_options(args) -> Optional[XTBAbsorbanceOptions]:
+    if args.scale_abs:
+        if "XTBPATH" not in os.environ:
+            raise ValueError("Could not find environment variable 'XTBPATH'")
+
+        xtb_path: str = str(os.environ.get("XTBPATH"))
+        if not os.path.isdir(xtb_path):
+            raise ValueError(f"The provided XTBPATH '{xtb_path}' is not a valid directory.")
+
+        return XTBAbsorbanceOptions(target=args.abs_target,
+                                    standard_deviation=args.abs_sigma,
+                                    oscillator_threshold=1.2,
+                                    energy_threshold=7,
+                                    path=xtb_path,
+                                    solvent="")
     return None
 
 
@@ -64,6 +84,20 @@ def reweigh_scores_by_logp(molecules: List[Chem.Mol],
     """
     logp_target_scores = [logp_target_score_clipped(m, logp_options.target, logp_options.standard_deviation) for m in molecules]
     return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
+
+
+def reweigh_scores_by_absorbance(molecules: List[Chem.Mol],
+                           scores: List[float],
+                           abs_options: XTBAbsorbanceOptions) -> List[float]:
+    """ Reweighs docking scores with logp
+
+        :param molecules: list of RDKit molecules to be re-weighted
+        :param scores: list of docking scores
+        :param abs_options:
+        :return: list of re-weighted docking scores
+    """
+    abs_target_scores = score_max(molecules, abs_options)[1]
+    return [ns * lts for ns, lts in zip(scores, abs_target_scores)]  # rescale scores and force list type
 
 
 def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol],
@@ -112,6 +146,10 @@ def setup() -> argparse.Namespace:
     logp_scaling = False
     logp_target = 3.5
     logp_sigma = 2.0
+    absorbance_scaling = False
+    absorbance_target = 400  # nm
+    absorbance_sigma = 50
+    absorbance_solvent = None
 
     ap = argparse.ArgumentParser()
     ap.add_argument("smilesfile", metavar="file", type=str, help="input filename of file with SMILES")
@@ -149,6 +187,18 @@ def setup() -> argparse.Namespace:
     score_scale_settings.add_argument("--scale-logp", dest="scale_logp", default=logp_scaling, action="store_true", help="Add this option to target a specifc logP value.")
     score_scale_settings.add_argument("--scale-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
     score_scale_settings.add_argument("--scale-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
+    score_scale_settings.add_argument("--scale-abs", dest="scale_absorbance", default=absorbance_scaling,
+                                      action="store_true",
+                                      help="Add this option to enable scaling by absorbance wavelength.")
+    score_scale_settings.add_argument("--scale-abs-target", dest="abs_target", metavar="number", type=float,
+                                      default=absorbance_target,
+                                      help="Target absorbance wavelength in nm. Default: %(default)s nm.")
+    score_scale_settings.add_argument("--scale-abs-sigma", dest="abs_sigma", metavar="number", type=float,
+                                      default=absorbance_sigma,
+                                      help="Standard deviation of absorbance wavelength. Default: %(default)s.")
+    score_scale_settings.add_argument("--scale-abs-solvent", dest="abs_solvent", metavar="solvent", type=str,
+                                      default=absorbance_solvent, choices=(None, "water"),
+                                      help="Solvent for absorbance calculation. Default is %(default)s.")
 
     doc_string = """
     Options for controlling how conformers are generated and used
@@ -232,7 +282,8 @@ def options(args: argparse.Namespace, ignore: bool = False) -> Tuple[GAOptions,
 
     scaling_options: ScreenOptions = ScreenOptions(args.scale_sa,
                                                    get_nrb_options(args),
-                                                   get_logp_options(args))
+                                                   get_logp_options(args),
+                                                   get_absorbance_options(args))
 
     docking_options: Union[docking.glide.GlideOptions,
                            docking.smina.SminaOptions]
@@ -332,6 +383,11 @@ def print_options(ga_options: GAOptions,
         print('* scaling docking score based on logP')
         print('* logP target', scaling_options.logp.target)
         print('* logP sigma', scaling_options.logp.standard_deviation)
+    if scaling_options.abs is not None:
+        print('* scaling docking score based on absorbance')
+        print('* Absorbance target [nm]', scaling_options.abs.target)
+        print('* Absorbance sigma', scaling_options.abs.standard_deviation)
+        print('* Absorbance solvent', scaling_options.abs.solvent)
 
     print('*** DOCKING SETTINGS ***')
     if isinstance(docking_options, docking.glide.GlideOptions):
@@ -394,6 +450,9 @@ def score(pop: List[Chem.Mol],
 
     if scaling_options.logp is not None:
         s = reweigh_scores_by_logp(pop, s, scaling_options.logp)
+
+    if scaling_options.abs is not None:
+        s = reweigh_scores_by_absorbance(pop, s, scaling_options.abs)
 
     # remove temporary directory
     try:

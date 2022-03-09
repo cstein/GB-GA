@@ -76,7 +76,7 @@ if __name__ == '__main__':
         output: List = pool.starmap(gbga, args)
 
     for i, s in enumerate(seeds):
-        scores: List[float]
-        pop, scores = output[i]
+        out_scores: List[float]
+        pop, out_scores = output[i]
         p, lambdas = absorbance.xtb.score(pop, absorbance_opt)
-        print(f"{i:d},{scores[0]:3.1f},{lambdas[0]:6.1f},{Chem.MolToSmiles(pop[0]):s}")
+        print(f"{i:d},{out_scores[0]:3.1f},{lambdas[0]:6.1f},{Chem.MolToSmiles(pop[0]):s}")
