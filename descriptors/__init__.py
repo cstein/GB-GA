@@ -9,7 +9,7 @@ from absorbance import XTBAbsorbanceOptions
 
 @dataclass
 class ScreenOptions:
-    sa_screening: bool
-    nrb: Optional[NumRotBondsOptions]
-    logp: Optional[LogPOptions]
-    abs: Optional[XTBAbsorbanceOptions]
+    sa_screening: bool = False
+    nrb: Optional[NumRotBondsOptions] = None
+    logp: Optional[LogPOptions] = None
+    abs: Optional[XTBAbsorbanceOptions] = None
