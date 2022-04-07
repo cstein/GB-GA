@@ -81,6 +81,9 @@ def get_structure(mol: Chem.Mol, num_conformations: int) -> Union[None, Chem.Mol
     except ValueError:
         print("get_structure: could not add hydrogens to the molecule '{}'".format(s_mol))
         return None
+    except RuntimeError:
+        print("get_structure: could not add hydrogens to the molecule '{}'".format(s_mol))
+        raise
 
     if num_conformations > 0:
         return _embed_multiple(mol, num_conformations)

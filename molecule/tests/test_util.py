@@ -51,7 +51,7 @@ def test_ring_ok():
 
 def test_mol_is_sane():
 
-    mol_opt_no_filter = create_molecule_options(20)
+    mol_opt_no_filter = MoleculeOptions(20, 2, None)
 
     # molecule is always sane if there are no filters
     s = "CCC"
@@ -62,12 +62,12 @@ def test_mol_is_sane():
     s = "CCCNCCC"
     mol = Chem.MolFromSmiles(s)
     filters = [Chem.MolFromSmarts("[NX3]")]
-    mol_opt = MoleculeOptions(20, 2, "", filters, False, None, None, False, False, None, None)
+    mol_opt = MoleculeOptions(20, 2, filters)
     assert mol_is_sane(mol, mol_opt) is False
 
 
 def test_mol_ok():
-    mol_opt_no_filter = create_molecule_options(20)
+    mol_opt_no_filter = MoleculeOptions(20, 2, None)
 
     # invalid molecules are not ok
     s = "[1*]C(=C(F)=CN=C(N=[1*])NC)S(=O)(=O)CCNC(=O)N1CCC[C@@H]2CCC[C@@H]21"
@@ -83,7 +83,7 @@ def test_mol_ok():
     s = "CCCNCCC"
     mol = Chem.MolFromSmiles(s)
     filters = [Chem.MolFromSmarts("[NX3]")]
-    mol_opt = MoleculeOptions(20, 2, "", filters, False, None, None, False, False, None, None)
+    mol_opt = MoleculeOptions(20, 2, filters)
     assert mol_ok(mol, mol_opt) is False
 
     # very small molecules are not ok

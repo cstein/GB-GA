@@ -71,18 +71,13 @@ def write_shell_extract(shell_settings, filename):
     substitute_file("../docking/glide_extract_pose.in.sh", filename, shell_settings)
 
 
-def parse_output(structure_options: Union[None, RDKit, LigPrep]) -> Tuple[List[Chem.Mol], List[float]]:
-    """ Parses the output (dock.csv) from a glide run
-    """
-
+def parse_output(filename: str) -> Tuple[List[float], List[int]]:
+    """ Parses the output (dock.csv) from a glide run """
     def get_index_from_title(title: str) -> int:
         if ":" not in title:
             return int(title)
         title_tokens = title.split(":")
         return int(title_tokens[1])
-
-    if structure_options is None:
-        raise ValueError()
 
     smiles_indices = []  # the entry in the original SMILES file
     ligand_indices = []  # the entry in the .mae file from ligprep
@@ -92,7 +87,7 @@ def parse_output(structure_options: Union[None, RDKit, LigPrep]) -> Tuple[List[C
     # read all results from the docking
     # this can be from either an RDKit or LigPrep
     # situation. We parse it correctly below
-    with open('dock.csv', 'r') as csvfile:
+    with open(filename, "r") as csvfile:
         reader = csv.reader(csvfile)
         for i, tokens in enumerate(reader):
             if i > 0:
@@ -110,53 +105,28 @@ def parse_output(structure_options: Union[None, RDKit, LigPrep]) -> Tuple[List[C
 
                 status.append(status_ok)
 
-    # now we parse the results. We strive to save only
-    # the best scores (for now). LigPrep gives a population
-    # of results whereas RDKit does not (for now)
-    f_scores = []
-    f_stat = []
-    old_smiles_index = 0
-    indices = []
-    idx = -1
-    for i, li, s, st in zip(smiles_indices, ligand_indices, scores, status):
-        if i != old_smiles_index:
-            idx += 1
-            old_smiles_index = i
-            indices.append(li)
-            f_scores.append(s)
-            f_stat.append(st)
-        else:
-            if f_scores[idx] > s:
-                f_scores[idx] = s
-                f_stat[idx] = st
-                indices[idx] = li
+        # now we parse the results. We strive to save only
+        # the best scores (for now). LigPrep gives a population
+        # of results whereas RDKit does not (for now)
+        f_scores = []
+        f_stat = []
+        old_smiles_index = 0
+        indices = []
+        idx = -1
+        for i, li, s, st in zip(smiles_indices, ligand_indices, scores, status):
+            if i != old_smiles_index:
+                idx += 1
+                old_smiles_index = i
+                indices.append(li)
+                f_scores.append(s)
+                f_stat.append(st)
+            else:
+                if f_scores[idx] > s:
+                    f_scores[idx] = s
+                    f_stat[idx] = st
+                    indices[idx] = li
 
-    if isinstance(structure_options, LigPrep):
-        # extract only the best score from the population
-        # TODO: in the future we might save everything
-        molecule.structure.ligprep.extract_subset(indices, structure_options.filename)
-    elif isinstance(structure_options, RDKit):
-        pass
-
-    # extract results from LigPrep or RDKit and save everything to
-    # a common .smiles format so we can load the best structure (ligprep only)
-    # for a given score.
-    shell_exec = "f2smi.sh"
-    substitute_file("../molecule/f2smi.in.sh", shell_exec, {"SCHRODPATH": os.environ.get("SCHRODINGER")})
-    os.chmod(shell_exec, stat.S_IRWXU)
-    shell("./f2smi.sh", "F2SMI")
-
-    # if we do not want to use replacement for ligprep
-    # we fake the whole thing by copying the original
-    # input smiles file to the subset.smi file
-    if isinstance(structure_options, LigPrep):
-        if not structure_options.replace_best_conformer_in_population:
-            shutil.copyfile("input.smi", "subset.smi")
-
-    # read back the smiles strings from the best molecules
-    molecules = read_smiles_file("subset.smi")
-
-    return molecules, f_scores
+    return f_scores, indices
 
 
 def glide_score(options: GlideOptions) -> Tuple[List[Chem.Mol], List[float]]:
@@ -172,6 +142,7 @@ def glide_score(options: GlideOptions) -> Tuple[List[Chem.Mol], List[float]]:
     # write the necessary glide-specific files needed for docking
     s = dict(GLIDE_SETTINGS)
     # TODO: We must fix this naming thing
+    assert options.structure_options is not None
 
     s["LIGANDFILES"] = options.structure_options.filename
     s['GRIDFILE'] = options.glide_grid
@@ -196,63 +167,31 @@ def glide_score(options: GlideOptions) -> Tuple[List[Chem.Mol], List[float]]:
     os.chmod(shell_exec, stat.S_IRWXU)
     shell("./{}".format(shell_exec), "GLIDE")
 
-    # shell_extract = "glide_extract_pose.sh"
-    # write_shell_extract(s2, os.path.join(wrk_dir, shell_extract))
+    scores, indices = parse_output("dock.csv")
 
-    # change to work directory
-    # os.chdir(wrk_dir)
-    # if not use_ligprep:
-    #     pass
-    # else:
-    #     pass
-    # exit()
+    if isinstance(options.structure_options, LigPrep):
+        # extract only the best score from the population
+        # TODO: in the future we might save everything
+        molecule.structure.ligprep.extract_subset(indices, options.structure_options.filename)
+    elif isinstance(options.structure_options, RDKit):
+        pass
 
-    # execute docking
+    # extract results from LigPrep or RDKit and save everything to
+    # a common .smiles format, so we can load the best structure (ligprep only)
+    # for a given score.
+    shell_exec = "f2smi.sh"
+    substitute_file("../molecule/f2smi.in.sh", shell_exec, {"SCHRODPATH": os.environ.get("SCHRODINGER")})
+    os.chmod(shell_exec, stat.S_IRWXU)
+    shell("./f2smi.sh", "F2SMI")
 
-    # parse output
-    # try:
-    #     sim_scores, sim_status = parse_output(options.structure_options)
-    # except IOError as e:
-    #     print("GLIDE Warning: Error parsing output in {} with error: {}".format(wrk_dir, e.strerror))
-    #     sim_scores = np.zeros(len(population))
-    #     sim_status = np.empty_like(sim_scores)
-    sim_population, sim_scores = parse_output(options.structure_options)
-    # for ss, mm in zip(sim_scores, sim_population):
-    #     print(ss, Chem.MolToSmiles(mm))
-    # exit()
+    # if we do not want to use replacement for ligprep
+    # we fake the whole thing by copying the original
+    # input smiles file to the subset.smi file
+    if isinstance(options.structure_options, LigPrep):
+        if not options.structure_options.replace_best_conformer_in_population:
+            shutil.copyfile("input.smi", "subset.smi")
 
-    # TODO: Fix pose extraction
-    #       We use the dock_pv.mae file which has _ALREADY_ sorted the binding poses
-    #       so the numbering is 100 % off.
-    # TODO: Fix speed of the following
-    #       It takes forever to do this step
-    # TODO: We could store all poses as .maegz
-    # copy the current population of poses to parent directory to save it for later
-    # if options.glide_save_poses:
-    #     os.chmod(shell_extract, stat.S_IRWXU)
-    #     zipf = zipfile.ZipFile("{}.zip".format(options.basename), 'w')
-    #     i_structure = 1
-    #     for i, status in enumerate(sim_status, start=1):
-    #         if status:
-    #             i_structure += 1
-    #             shell("./{} {} {}".format(shell_extract, i, i_structure), "EXTRACT")
-    #             zipf.write(f"{i}.sd")
-    #     zipf.close()
-    #     shutil.copy("{}.zip".format(options.basename), "../{}.zip".format(options.basename))
+    # read back the smiles strings from the best molecules
+    molecules = read_smiles_file("subset.smi")
 
-    # go back from work directory
-    # os.chdir("..")
-    # if len(population) != len(sim_scores):
-    #     raise ValueError("GLIDE Error: Could not score all ligands. Check logs in '{}'".format(wrk_dir))
-
-    # # remove temporary directory
-    # if sim_status is not None:
-    #     try:
-    #         shutil.rmtree(wrk_dir)
-    #     except OSError:
-    #         # in rare cases, the rmtree function is called before / during the
-    #         # cleanup actions by GLIDE. This raises an OSError because of the
-    #         # way that rmtree works (list all files, then delete individually)
-    #         # Here, we simply let it slide so the USER can deal with it later
-    #         print("GLIDE Warning: Could not delete working directory `{}`. Please delete when done.".format(wrk_dir))
-    return sim_population, sim_scores
+    return molecules, scores

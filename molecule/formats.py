@@ -51,7 +51,7 @@ def molecule_to_xyz(mol: Chem.Mol, filename: str, name: Optional[str] = None):
     conf = mol.GetConformer(0)
     with open(filename, "w") as f:
         s = "{0:d}\n".format(number_of_atoms)
-        s+= "{0:s}\n".format(name_str)
+        s += "{0:s}\n".format(name_str)
         for atom, symbol in enumerate(symbols):
             c = conf.GetAtomPosition(atom)
             s += "{0:2<s}{1[0]:16.5f}{1[1]:15.5f}{1[2]:15.5f}\n".format(symbol, c)
