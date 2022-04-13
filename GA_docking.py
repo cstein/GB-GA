@@ -458,6 +458,9 @@ def score(pop: List[Chem.Mol],
     if scaling_options.logp is not None:
         s = reweigh_scores_by_logp(pop, s, scaling_options.logp)
 
+    if scaling_options.molwt is not None:
+        s = reweigh_scores_by_molwt(pop, s, scaling_options.molwt)
+
     # remove temporary directory
     try:
         shutil.rmtree(wrk_dir)
