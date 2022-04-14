@@ -5,6 +5,7 @@ import os.path
 import pickle
 import random
 import shutil
+import string
 import time
 from typing import List, Union, Tuple, Optional
 
@@ -23,14 +24,19 @@ import molecule.structure.rdkit
 from descriptors import LogPOptions, NumRotBondsOptions, ScreenOptions, MolWeightOptions
 from descriptors.logp import logp_target_score_clipped
 from descriptors.molwt import molwt_target_score_clipped
-from descriptors.numrotbonds import number_of_rotatable_bonds_target_clipped
+from descriptors.numrotbonds import numrot_bonds_target_score_clipped
+from docking.util import choices
 from ga import GAOptions
 from ga import make_initial_population, make_mating_pool, reproduce, sanitize
 from molecule import MoleculeOptions
 from sa import sa_target_score_clipped, neutralize_molecules
 
 
-def reweigh_scores_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List[float]:
+def list_multiply(a: List[float], b: List[float]) -> List[float]:
+    return [i*j for i, j in zip(a, b)]
+
+
+def reweigh_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List[float]:
     """ Reweighs scores with synthetic accessibility score
 
         :param molecules: list of RDKit molecules to be re-weighted
@@ -38,40 +44,40 @@ def reweigh_scores_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List
         :return: list of re-weighted docking scores
     """
     sa_scores = [sa_target_score_clipped(m) for m in molecules]
-    return [ns * sa for ns, sa in zip(scores, sa_scores)]  # rescale scores and force list type
+    return list_multiply(scores, sa_scores)
 
 
-def reweigh_scores_by_logp(molecules: List[Chem.Mol],
-                           scores: List[float],
-                           logp_options: LogPOptions) -> List[float]:
+def reweigh_by_logp(molecules: List[Chem.Mol],
+                    scores: List[float],
+                    options: LogPOptions) -> List[float]:
     """ Reweighs docking scores with logp
 
         :param molecules: list of RDKit molecules to be re-weighted
         :param scores: list of docking scores
-        :param logp_options:
+        :param options:
         :return: list of re-weighted docking scores
     """
-    logp_target_scores = [logp_target_score_clipped(m, logp_options.target, logp_options.standard_deviation) for m in molecules]
-    return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
+    logp_target_scores = [logp_target_score_clipped(m, options.target, options.standard_deviation) for m in molecules]
+    return list_multiply(scores, logp_target_scores)
 
 
-def reweigh_scores_by_molwt(molecules: List[Chem.Mol],
-                            scores: List[float],
-                            molwt_options: MolWeightOptions) -> List[float]:
+def reweigh_by_molwt(molecules: List[Chem.Mol],
+                     scores: List[float],
+                     options: MolWeightOptions) -> List[float]:
     """ Reweighs docking scores with logp
 
         :param molecules: list of RDKit molecules to be re-weighted
         :param scores: list of docking scores
-        :param logp_options:
+        :param options:
         :return: list of re-weighted docking scores
     """
-    logp_target_scores = [molwt_target_score_clipped(m, molwt_options.target, molwt_options.standard_deviation) for m in molecules]
-    return [ns * lts for ns, lts in zip(scores, logp_target_scores)]  # rescale scores and force list type
+    logp_target_scores = [molwt_target_score_clipped(m, options.target, options.standard_deviation) for m in molecules]
+    return list_multiply(scores, logp_target_scores)
 
 
-def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol],
-                                                       scores: List[float],
-                                                       nrb_options: NumRotBondsOptions) -> List[float]:
+def reweigh_by_numrot_bonds_target(molecules: List[Chem.Mol],
+                                   scores: List[float],
+                                   options: NumRotBondsOptions) -> List[float]:
     """ Reweighs docking scores by number of rotatable bonds.
 
         For some molecules we want a maximum of number of rotatable bonds (typically 5) but
@@ -81,11 +87,11 @@ def reweigh_scores_by_number_of_rotatable_bonds_target(molecules: List[Chem.Mol]
 
         :param molecules:
         :param scores:
-        :param nrb_options:
+        :param options:
         :return:
     """
-    number_of_rotatable_target_scores = [number_of_rotatable_bonds_target_clipped(m, nrb_options.target, nrb_options.standard_deviation) for m in molecules]
-    return [ns * lts for ns, lts in zip(scores, number_of_rotatable_target_scores)]  # rescale scores and force list type
+    number_of_rotatable_target_scores = [numrot_bonds_target_score_clipped(m, options.target, options.standard_deviation) for m in molecules]
+    return list_multiply(scores, number_of_rotatable_target_scores)
 
 
 class ExpandPath(argparse.Action):
@@ -425,8 +431,6 @@ def score(pop: List[Chem.Mol],
         :returns: a tuple of RDKit molecules and corresponding energies
     """
     # work directory
-    from docking.util import choices
-    import string
     wrk_dir = docking_options.basename + "_" + ''.join(choices(string.ascii_uppercase + string.digits, 6))
     os.mkdir(wrk_dir)
     os.chdir(wrk_dir)
@@ -450,16 +454,16 @@ def score(pop: List[Chem.Mol],
     os.chdir("..")
 
     if scaling_options.nrb is not None:
-        s = reweigh_scores_by_number_of_rotatable_bonds_target(pop, s, scaling_options.nrb)
+        s = reweigh_by_numrot_bonds_target(pop, s, scaling_options.nrb)
 
     if scaling_options.sa_screening:
-        s = reweigh_scores_by_sa(neutralize_molecules(pop), s)
+        s = reweigh_by_sa(neutralize_molecules(pop), s)
 
     if scaling_options.logp is not None:
-        s = reweigh_scores_by_logp(pop, s, scaling_options.logp)
+        s = reweigh_by_logp(pop, s, scaling_options.logp)
 
     if scaling_options.molwt is not None:
-        s = reweigh_scores_by_molwt(pop, s, scaling_options.molwt)
+        s = reweigh_by_molwt(pop, s, scaling_options.molwt)
 
     # remove temporary directory
     try:
