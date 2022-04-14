@@ -19,7 +19,7 @@ def molwt_score(m: Chem.Mol) -> float:
 
 
 def molwt_target_score(m: Chem.Mol, target: float, sigma: float) -> float:
-    """ Computes a logp target score using a gaussian modifier
+    """ Computes a molecule weight target score using a gaussian modifier
 
         If the target is hit, the score returned is 1.
 
@@ -32,7 +32,7 @@ def molwt_target_score(m: Chem.Mol, target: float, sigma: float) -> float:
 
 
 def molwt_target_score_clipped(m: Chem.Mol, target: float = 350, sigma: float = 30) -> float:
-    """ Computes a logp target score using a gaussian modifier
+    """ Computes a molecule weight target score using a gaussian modifier
 
         If the target is hit, the score returned is 1.
         Values below the target has a score of 1.

@@ -4,10 +4,8 @@ import copy
 import json
 from typing import List, Tuple
 
-import numpy as np
 from rdkit import Chem
 
-from .sascorer import calculateScore
 _neutralize_reactions = None
 
 
@@ -65,12 +63,3 @@ def neutralize_molecules(charged_molecules: List[Chem.Mol]) -> List[Chem.Mol]:
         Chem.rdmolops.FastFindRings(mol)
         neutral_molecules.append(mol)
     return neutral_molecules
-
-
-if __name__ == '__main__':
-    s_q = "c1ccccc1C(C(=O)[O-])c2ccccc2"
-    s_q = "c1cccc(c12)cc(cc2)C[NH+]([NH3+])C(=O)[NH3+]"
-    s_n = neutralize_smiles([s_q])
-
-    print("Q: ", s_q, calculateScore(Chem.MolFromSmiles(s_q)))
-    print("N: ", s_n, calculateScore(Chem.MolFromSmiles(s_n[0])))
