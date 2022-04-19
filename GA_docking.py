@@ -8,6 +8,7 @@ import shutil
 import string
 import time
 from typing import List, Union, Tuple, Optional
+from dataclasses import dataclass
 
 import numpy as np
 from rdkit import rdBase
@@ -25,6 +26,7 @@ from descriptors import LogPOptions, NumRotBondsOptions, ScreenOptions, MolWeigh
 from descriptors.logp import logp_target_score_clipped
 from descriptors.molwt import molwt_target_score_clipped
 from descriptors.numrotbonds import numrot_bonds_target_score_clipped
+from descriptors.qed import qed_score
 from docking.util import choices
 from ga import GAOptions
 from ga import make_initial_population, make_mating_pool, reproduce, sanitize
@@ -45,6 +47,17 @@ def reweigh_by_sa(molecules: List[Chem.Mol], scores: List[float]) -> List[float]
     """
     sa_scores = [sa_target_score_clipped(m) for m in molecules]
     return list_multiply(scores, sa_scores)
+
+
+def reweigh_by_qed(molecules: List[Chem.Mol], scores: List[float]) -> List[float]:
+    """ Reweighs scores with drug-likeness
+
+        :param molecules: list of RDKit molecules to be re-weighted
+        :param scores: list of docking scores
+        :return: list of re-weighted docking scores
+    """
+    qed_scores = [qed_score(m) for m in molecules]
+    return list_multiply(scores, qed_scores)
 
 
 def reweigh_by_logp(molecules: List[Chem.Mol],
@@ -118,6 +131,7 @@ def setup() -> argparse.Namespace:
     basename = ""
     glide_expanded_sampling = False
     sa_scaling = False
+    qed_scaling = False
     logp_scaling = False
     logp_target = 3.5
     logp_sigma = 2.0
@@ -158,6 +172,7 @@ def setup() -> argparse.Namespace:
     score_scale_settings.add_argument("--scale-nrb-target", dest="nrb_target", metavar="number", type=int, default=5, help="Target number of rotatable bonds. %(default)s.")
     score_scale_settings.add_argument("--scale-nrb-sigma", dest="nrb_sigma", metavar="number", type=int, default=1, help="Standard deviation of accepted number of rotatable bonds. %(default)s.")
     score_scale_settings.add_argument("--scale-sa", dest="scale_sa", default=sa_scaling, action="store_true", help="Add this option to keep molecules that are easier to synthesize.")
+    score_scale_settings.add_argument("--scale-qed", dest="scale_qed", default=qed_scaling, action="store_true", help="Add this option to keep molecules that are more drug-like (QED from RDKit).")
     score_scale_settings.add_argument("--scale-logp", dest="scale_logp", default=logp_scaling, action="store_true", help="Add this option to target a specifc logP value.")
     score_scale_settings.add_argument("--scale-logp-target", dest="logp_target", metavar="number", type=float, default=logp_target, help="Target logP value. Default: %(default)s.")
     score_scale_settings.add_argument("--scale-logp-sigma", dest="logp_sigma", metavar="number", type=float, default=logp_sigma, help="Standard deviation of accepted logP. Default: %(default)s.")
@@ -226,6 +241,10 @@ def get_sa_options(args: argparse.Namespace) -> bool:
     return args.scale_sa
 
 
+def get_qed_options(args: argparse.Namespace) -> bool:
+    return args.scale_qed
+
+
 def get_screening_options(args: argparse.Namespace) -> ScreenOptions:
     """ Creates a ScreenOptions object based on input arguments
 
@@ -236,6 +255,11 @@ def get_screening_options(args: argparse.Namespace) -> ScreenOptions:
     sa_screen = False
     if hasattr(args, "scale_sa"):
         sa_screen = get_sa_options(args)
+
+    # drug-like-ness
+    qed_screen = False
+    if hasattr(args, "scale_qed"):
+        qed_screen = True
 
     # number of rotatable bonds
     nrb_screen = None
@@ -252,7 +276,7 @@ def get_screening_options(args: argparse.Namespace) -> ScreenOptions:
     if hasattr(args, "scale_molwt"):
         molwt_screen = get_molwt_options(args)
 
-    return ScreenOptions(sa_screen, nrb_screen, logp_screen, molwt_screen)
+    return ScreenOptions(sa_screen, qed_screen, nrb_screen, logp_screen, molwt_screen)
 
 
 def options(args: argparse.Namespace, ignore: bool = False) -> Tuple[GAOptions,
@@ -413,6 +437,17 @@ def print_options(ga_options: GAOptions,
     print('* ')
 
 
+@dataclass
+class GAScoreResults:
+    """ Contains all information for scores """
+    docking_scores: List[float]
+    sa_scores: List[float]
+    molwt_scores: List[float]
+    numrot_scores: List[float]
+    logp_scores: List[float]
+    scores: List[float]  # final scores
+
+
 def score(pop: List[Chem.Mol],
           molecule_options: MoleculeOptions,
           scaling_options: ScreenOptions,
@@ -458,6 +493,9 @@ def score(pop: List[Chem.Mol],
 
     if scaling_options.sa_screening:
         s = reweigh_by_sa(neutralize_molecules(pop), s)
+
+    if scaling_options.qed_screening:
+        s = reweigh_by_qed(neutralize_molecules(pop), s)
 
     if scaling_options.logp is not None:
         s = reweigh_by_logp(pop, s, scaling_options.logp)

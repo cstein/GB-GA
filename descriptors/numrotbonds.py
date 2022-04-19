@@ -25,6 +25,6 @@ def number_of_rotatable_bonds_target(mol: Chem.Mol, target: float, sigma: float)
     return gaussian_modifier(n, target, sigma)
 
 
-def number_of_rotatable_bonds_target_clipped(mol: Chem.Mol, target: float, sigma: float) -> float:
+def numrot_bonds_target_score_clipped(mol: Chem.Mol, target: float, sigma: float) -> float:
     n: int = number_of_rotatable_bonds(mol)
     return gaussian_modifier_clipped(n, target, sigma)

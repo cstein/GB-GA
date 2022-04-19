@@ -11,6 +11,7 @@ from absorbance import XTBAbsorbanceOptions
 @dataclass
 class ScreenOptions:
     sa_screening: bool = False
+    qed_screening: bool = False
     nrb: Optional[NumRotBondsOptions] = None
     logp: Optional[LogPOptions] = None
     molwt: Optional[MolWeightOptions] = None
